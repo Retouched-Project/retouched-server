@@ -3,8 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
-pub const RETOUCHED_WEB_RELEASES_URL: &str =
-    "https://github.com/TODO/retouched_web/releases/latest/download/retouched_web_release.zip";
+pub const RETOUCHED_WEB_RELEASES_URL: &str = "https://github.com/Retouched-Project/retouched_web/releases/latest/download/retouched_web_release.zip";
 
 pub const WEB_APP_DIR_NAME: &str = "retouched_web";
 
@@ -36,10 +35,7 @@ pub fn download_web_app(dir: &Path) -> Result<String, Box<dyn std::error::Error 
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)?;
         let name = file.name().to_string();
-        let out_path = match strip_zip_prefix(&name) {
-            Some(stripped) => dir.join(stripped),
-            None => dir.join(&name),
-        };
+        let out_path = dir.join(&name);
         if file.is_dir() {
             std::fs::create_dir_all(&out_path)?;
         } else {
@@ -53,14 +49,4 @@ pub fn download_web_app(dir: &Path) -> Result<String, Box<dyn std::error::Error 
 
     log::info!("Extracted retouched_web to {}", dir.display());
     Ok("latest".to_string())
-}
-
-fn strip_zip_prefix(name: &str) -> Option<&str> {
-    let trimmed = name.trim_start_matches('/');
-    if let Some(pos) = trimmed.find('/') {
-        let rest = &trimmed[pos + 1..];
-        if rest.is_empty() { None } else { Some(rest) }
-    } else {
-        None
-    }
 }
