@@ -1,0 +1,218 @@
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- Copyright (C) 2026 ddavef/KinteLiX retouched_server -->
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Retouched Web Secure Setup</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #0f0f0f;
+            color: #ffffff;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+
+        .container {
+            max-width: 450px;
+            background: #181818;
+            border-radius: 20px;
+            padding: 32px;
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+            border: 1px solid #222;
+        }
+
+        h1 {
+            font-size: 28px;
+            margin-bottom: 12px;
+            color: #ffcc00;
+            letter-spacing: -0.5px;
+        }
+
+        .intro {
+            font-size: 16px;
+            color: #bbbbbb;
+            line-height: 1.6;
+            margin-bottom: 32px;
+        }
+
+        .section-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 16px;
+            text-align: left;
+            border-left: 4px solid #007aff;
+            padding-left: 12px;
+        }
+
+        .step {
+            background: #222222;
+            border-radius: 14px;
+            padding: 20px;
+            margin-bottom: 24px;
+            text-align: left;
+            border: 1px solid #333;
+        }
+
+        .step-title {
+            font-weight: 800;
+            font-size: 15px;
+            color: #007aff;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+            display: block;
+        }
+
+        .step-desc {
+            font-size: 14px;
+            color: #dddddd;
+            margin: 0;
+            line-height: 1.5;
+        }
+
+        .step-desc strong {
+            color: #ffffff;
+        }
+
+        .btn {
+            display: inline-block;
+            width: 100%;
+            padding: 16px 0;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 700;
+            text-decoration: none;
+            text-align: center;
+            border: none;
+            cursor: pointer;
+            box-sizing: border-box;
+            transition: all 0.2s ease;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #007aff, #0056b3);
+            color: white;
+            box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
+        }
+
+        .btn-primary:active {
+            transform: scale(0.98);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #34c759, #248a3d);
+            color: white;
+            opacity: 0.4;
+            pointer-events: none;
+            margin-top: 24px;
+        }
+
+        .btn-success.ready {
+            opacity: 1;
+            pointer-events: auto;
+            box-shadow: 0 4px 15px rgba(52, 199, 89, 0.4);
+            animation: pulse 2.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(1.02);
+            }
+
+            100% {
+                transform: scale(1);
+            }
+        }
+
+        .platform-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 20px;
+            margin-top: 10px;
+        }
+
+        .platform-note {
+            font-size: 12px;
+            color: #666;
+            margin-top: 16px;
+            font-style: italic;
+        }
+
+        hr {
+            border: 0;
+            height: 1px;
+            background: #333;
+            margin: 32px 0;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Secure Setup</h1>
+        <p class="intro">Browsers require a trusted connection to enable sensitive features like <strong>Haptic
+                Vibration</strong> and <strong>Motion Sensors</strong>.</p>
+
+        <div class="step">
+            <span class="step-title">Initial Step</span>
+            <p class="step-desc">Download the certificate below. Choose <strong>Allow</strong> or <strong>Save</strong>
+                if prompted.</p>
+            <div style="margin-top: 16px;">
+                <a href="/ca.crt" class="btn btn-primary">Download Certificate</a>
+            </div>
+        </div>
+
+        <div class="section-title">iOS Instructions</div>
+        <div class="platform-grid">
+            <div class="step-desc">
+                1. Open <strong>Settings</strong> and tap <strong>Profile Downloaded</strong> (or go to General > VPN &
+                Device Management).<br><br>
+                2. Tap <strong>Install</strong> and confirm.<br><br>
+                3. Go to <strong>Settings > General > About > Certificate Trust Settings</strong>.<br><br>
+                4. Find <strong>Retouched Local Root CA</strong> and toggle it <strong>ON</strong>.
+            </div>
+        </div>
+
+        <div style="margin-top: 32px;" class="section-title">Android Instructions</div>
+        <div class="platform-grid">
+            <div class="step-desc">
+                1. Open <strong>Settings</strong> and search for <strong>CA Certificate</strong>.<br><br>
+                2. Select <strong>Install from storage</strong> or <strong>Encryption & credentials</strong>.<br><br>
+                3. Choose <strong>CA Certificate</strong> and tap <strong>Install Anyway</strong> if warned.<br><br>
+                4. Select the <strong>RetouchedRootCA.pem</strong> file you just downloaded.
+            </div>
+        </div>
+
+        <p class="platform-note">On other platforms, install the certificate into your browser or OS trusted root store.
+        </p>
+
+        <hr>
+
+        <a href="#" id="playBtn" class="btn btn-success">Open Controller</a>
+    </div>
+
+    <script>
+        const httpsUrl = "https://" + window.location.hostname + ":8089/";
+        const playBtn = document.getElementById('playBtn');
+        playBtn.href = httpsUrl;
+
+        setTimeout(() => {
+            playBtn.classList.add('ready');
+        }, 2000);
+    </script>
+</body>
+
+</html>

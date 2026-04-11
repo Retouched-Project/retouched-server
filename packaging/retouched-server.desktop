@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Retouched Server
+Exec=retouched-server
+Icon=retouched-server
+Categories=Utility;Network;
+StartupWMClass=retouched-server
