@@ -2,14 +2,10 @@ name: Build Server
 
 on:
   pull_request:
-    paths:
-      - 'retouched-server/**'
   workflow_dispatch:
   push:
     branches:
       - main
-    paths:
-      - 'retouched-server/**'
 
 env:
   CARGO_TERM_COLOR: always
@@ -89,8 +85,8 @@ jobs:
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: retouched-server -> target
-          key: ${{ matrix.name }}-v2
+          workspaces: . -> target
+          key: ${{ matrix.name }}-v3
 
       - name: Install build dependencies (Linux)
         if: ${{ runner.os == 'Linux' }}
@@ -119,7 +115,6 @@ jobs:
           install-deps: 'true'
 
       - name: Build (Rust)
-        working-directory: retouched-server
         run: >-
           cargo build --release
           --target ${{ matrix.target }}
@@ -127,7 +122,6 @@ jobs:
 
       - name: Package (Linux AppImage)
         if: ${{ runner.os == 'Linux' && !matrix.cli_only }}
-        working-directory: retouched-server
         run: |
           mkdir -p AppDir/usr/bin
           cp target/${{ matrix.target }}/release/retouched-server AppDir/usr/bin/
@@ -159,7 +153,6 @@ jobs:
       - name: Package (Windows)
         if: ${{ runner.os == 'Windows' && !matrix.cli_only }}
         shell: pwsh
-        working-directory: retouched-server
         run: |
           $deployDir = "deploy"
           New-Item -ItemType Directory -Path $deployDir -Force
@@ -168,7 +161,6 @@ jobs:
 
       - name: Package (macOS dmg)
         if: ${{ runner.os == 'macOS' }}
-        working-directory: retouched-server
         run: |
           APP="RetouchedServer.app"
           mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
@@ -189,8 +181,8 @@ jobs:
         with:
           name: retouched-server-${{ matrix.name }}
           path: |
-            retouched-server/RetouchedServer-*.AppImage
-            retouched-server/deploy/
-            retouched-server/*.dmg
-            retouched-server/target/${{ matrix.target }}/release/retouched-server*
+            RetouchedServer-*.AppImage
+            deploy/
+            *.dmg
+            target/${{ matrix.target }}/release/retouched-server*
           if-no-files-found: ignore
