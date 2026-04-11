@@ -107,11 +107,17 @@ jobs:
           TARGET_UPPER=$(echo "${{ matrix.target }}" | tr '[:lower:]-' '[:upper:]_')
           echo "CARGO_TARGET_${TARGET_UPPER}_LINKER=${{ matrix.cross_linker }}" >> "$GITHUB_ENV"
 
+      - name: Fix Windows Python Path
+        if: ${{ runner.os == 'Windows' }}
+        run: |
+          Remove-Item "$env:LOCALAPPDATA\Microsoft\WindowsApps\python*.exe" -ErrorAction SilentlyContinue
+        shell: pwsh
+
       - name: Install Qt
         if: ${{ matrix.qt_arch }}
         uses: jurplel/install-qt-action@v4
         with:
-          version: '6.11.0'
+          version: '6.10.3'
           host: ${{ matrix.qt_host || '' }}
           arch: ${{ matrix.qt_arch }}
           modules: ${{ matrix.qt_modules || '' }}
