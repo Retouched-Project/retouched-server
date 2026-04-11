@@ -1,0 +1,196 @@
+name: Build Server
+
+on:
+  pull_request:
+    paths:
+      - 'retouched-server/**'
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'retouched-server/**'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # GUI builds (Qt)
+          - name: linux-x86_64
+            os: ubuntu-20.04
+            target: x86_64-unknown-linux-gnu
+            arch_label: x86_64
+            qt_arch: linux_gcc_64
+            qt_modules: qtwaylandcompositor qtdeclarative
+
+          - name: linux-arm64
+            os: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+            arch_label: aarch64
+            qt_arch: linux_gcc_arm64
+            qt_host: linux_arm64
+            qt_modules: qtwaylandcompositor qtdeclarative
+
+          - name: windows-x86_64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            qt_arch: win64_msvc2022_64
+
+          - name: windows-arm64
+            os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            qt_arch: win64_msvc2022_arm64
+            qt_host: windows_arm64
+
+          - name: macos-arm64
+            os: macos-14
+            target: aarch64-apple-darwin
+
+          - name: macos-x86_64
+            os: macos-14
+            target: x86_64-apple-darwin
+
+          # CLI-only builds (no Qt)
+          - name: linux-x86
+            os: ubuntu-20.04
+            target: i686-unknown-linux-gnu
+            cli_only: true
+            cross_packages: gcc-multilib
+
+          - name: linux-arm32
+            os: ubuntu-20.04
+            target: armv7-unknown-linux-gnueabihf
+            cli_only: true
+            cross_packages: gcc-arm-linux-gnueabihf
+            cross_linker: arm-linux-gnueabihf-gcc
+
+          - name: windows-x86
+            os: windows-latest
+            target: i686-pc-windows-msvc
+            cli_only: true
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+          toolchain: stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: retouched-server -> target
+          key: ${{ matrix.name }}-v2
+
+      - name: Install build dependencies (Linux)
+        if: ${{ runner.os == 'Linux' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgl-dev pkg-config mold patchelf libxkbcommon-dev \
+            libvulkan-dev libfontconfig1-dev libfreetype6-dev libx11-dev \
+            libxcb1-dev libwayland-dev ${{ matrix.cross_packages }}
+          sudo ln -sf /usr/bin/mold /usr/bin/ld.gold
+
+      - name: Set cross linker
+        if: ${{ matrix.cross_linker }}
+        run: |
+          TARGET_UPPER=$(echo "${{ matrix.target }}" | tr '[:lower:]-' '[:upper:]_')
+          echo "CARGO_TARGET_${TARGET_UPPER}_LINKER=${{ matrix.cross_linker }}" >> "$GITHUB_ENV"
+
+      - name: Install Qt
+        if: ${{ matrix.qt_arch }}
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.11.0'
+          host: ${{ matrix.qt_host || '' }}
+          arch: ${{ matrix.qt_arch }}
+          modules: ${{ matrix.qt_modules || '' }}
+          install-deps: 'true'
+
+      - name: Build (Rust)
+        working-directory: retouched-server
+        run: >-
+          cargo build --release
+          --target ${{ matrix.target }}
+          ${{ matrix.cli_only && '--no-default-features' || '' }}
+
+      - name: Package (Linux AppImage)
+        if: ${{ runner.os == 'Linux' && !matrix.cli_only }}
+        working-directory: retouched-server
+        run: |
+          mkdir -p AppDir/usr/bin
+          cp target/${{ matrix.target }}/release/retouched-server AppDir/usr/bin/
+          
+          mkdir -p AppDir/usr/share/applications
+          cp packaging/retouched-server.desktop AppDir/usr/share/applications/
+          mkdir -p AppDir/usr/share/icons/hicolor/scalable/apps
+          cp assets/retouched_logo.svg AppDir/usr/share/icons/hicolor/scalable/apps/retouched-server.svg
+          
+          curl -LO https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-${{ matrix.arch_label }}.AppImage
+          curl -LO https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-${{ matrix.arch_label }}.AppImage
+          chmod +x linuxdeploy*.AppImage
+          
+          export QMAKE=$(which qmake || which qmake6)
+          export QML_SOURCES_PATHS=qml
+          export EXTRA_QT_PLUGINS=waylandcompositor
+          export EXTRA_PLATFORM_PLUGINS="libqwayland-egl.so;libqwayland-generic.so"
+          
+          ./linuxdeploy-${{ matrix.arch_label }}.AppImage \
+            --appdir AppDir \
+            --executable AppDir/usr/bin/retouched-server \
+            --desktop-file AppDir/usr/share/applications/retouched-server.desktop \
+            --icon-file AppDir/usr/share/icons/hicolor/scalable/apps/retouched-server.svg \
+            --plugin qt \
+            --output appimage
+            
+          mv Retouched_Server-*.AppImage RetouchedServer-build-${{ github.run_number }}-linux-${{ matrix.arch_label }}.AppImage
+
+      - name: Package (Windows)
+        if: ${{ runner.os == 'Windows' && !matrix.cli_only }}
+        shell: pwsh
+        working-directory: retouched-server
+        run: |
+          $deployDir = "deploy"
+          New-Item -ItemType Directory -Path $deployDir -Force
+          Copy-Item "target/${{ matrix.target }}/release/retouched-server.exe" $deployDir
+          windeployqt6 --qmldir qml --no-translations "$deployDir/retouched-server.exe"
+
+      - name: Package (macOS dmg)
+        if: ${{ runner.os == 'macOS' }}
+        working-directory: retouched-server
+        run: |
+          APP="RetouchedServer.app"
+          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+          cp "target/${{ matrix.target }}/release/retouched-server" "$APP/Contents/MacOS/"
+          cp packaging/Info.plist "$APP/Contents/"
+          
+          mkdir -p icon.iconset
+          sips -z 256 256 assets/retouched_logo_icons.png --out icon.iconset/icon_256x256.png
+          sips -z 512 512 assets/retouched_logo_icons.png --out icon.iconset/icon_512x512.png
+          sips -z 128 128 assets/retouched_logo_icons.png --out icon.iconset/icon_128x128.png
+          iconutil -c icns icon.iconset -o "$APP/Contents/Resources/retouched-server.icns"
+          
+          macdeployqt "$APP" -qmldir=qml -dmg
+          mv RetouchedServer.dmg "RetouchedServer-build-${{ github.run_number }}-macos-${{ matrix.target }}.dmg"
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: retouched-server-${{ matrix.name }}
+          path: |
+            retouched-server/RetouchedServer-*.AppImage
+            retouched-server/deploy/
+            retouched-server/*.dmg
+            retouched-server/target/${{ matrix.target }}/release/retouched-server*
+          if-no-files-found: ignore
