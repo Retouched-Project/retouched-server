@@ -17,11 +17,11 @@ jobs:
         include:
           # GUI builds (Qt)
           - name: linux-x86_64
-            os: ubuntu-20.04
+            os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             arch_label: x86_64
-            qt_arch: gcc_64
-            qt_modules: qtwaylandcompositor qtdeclarative
+            qt_arch: linux_gcc_64
+            qt_modules: qtwaylandcompositor
 
           - name: linux-arm64
             os: ubuntu-22.04-arm
@@ -29,7 +29,7 @@ jobs:
             arch_label: aarch64
             qt_arch: linux_gcc_arm64
             qt_host: linux_arm64
-            qt_modules: qtwaylandcompositor qtdeclarative
+            qt_modules: qtwaylandcompositor
 
           - name: windows-x86_64
             os: windows-latest
@@ -54,13 +54,13 @@ jobs:
 
           # CLI-only builds (no Qt)
           - name: linux-x86
-            os: ubuntu-20.04
+            os: ubuntu-22.04
             target: i686-unknown-linux-gnu
             cli_only: true
             cross_packages: gcc-multilib
 
           - name: linux-arm32
-            os: ubuntu-20.04
+            os: ubuntu-22.04
             target: armv7-unknown-linux-gnueabihf
             cli_only: true
             cross_packages: gcc-arm-linux-gnueabihf
