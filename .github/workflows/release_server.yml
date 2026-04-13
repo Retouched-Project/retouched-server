@@ -10,6 +10,7 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  QT_VERSION: 6.10.3
 
 jobs:
   build:
@@ -117,7 +118,7 @@ jobs:
         if: ${{ matrix.qt_arch }}
         uses: jurplel/install-qt-action@v4
         with:
-          version: '6.10.3'
+          version: ${{ env.QT_VERSION }}
           host: ${{ matrix.qt_host || '' }}
           arch: ${{ matrix.qt_arch }}
           modules: ${{ matrix.qt_modules || '' }}
@@ -128,6 +129,10 @@ jobs:
           cargo build --release
           --target ${{ matrix.target }}
           ${{ matrix.cli_only && '--no-default-features' || '' }}
+        env:
+          Qt6_DIR: ${{ runner.os == 'Linux' && !matrix.cli_only && format('{0}/Qt/{1}/{2}/lib/cmake/Qt6', github.workspace, env.QT_VERSION, matrix.qt_arch) || '' }}
+          QT_DIR: ${{ runner.os == 'Linux' && !matrix.cli_only && format('{0}/Qt/{1}/{2}', github.workspace, env.QT_VERSION, matrix.qt_arch) || '' }}
+          CMAKE_PREFIX_PATH: ${{ runner.os == 'Linux' && !matrix.cli_only && format('{0}/Qt/{1}/{2}/lib/cmake', github.workspace, env.QT_VERSION, matrix.qt_arch) || '' }}
 
       - name: Package (Linux AppImage)
         if: ${{ runner.os == 'Linux' && !matrix.cli_only }}
@@ -144,10 +149,9 @@ jobs:
           curl -LO https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-${{ matrix.arch_label }}.AppImage
           chmod +x linuxdeploy*.AppImage
           
-          export QMAKE=$(which qmake || which qmake6)
           export QML_SOURCES_PATHS=qml
           export EXTRA_QT_PLUGINS=waylandcompositor
-          export EXTRA_PLATFORM_PLUGINS="libqwayland-egl.so;libqwayland-generic.so"
+          export EXTRA_PLATFORM_PLUGINS="wayland-egl;wayland"
           
           ./linuxdeploy-${{ matrix.arch_label }}.AppImage \
             --appdir AppDir \
@@ -158,6 +162,9 @@ jobs:
             --output appimage
             
           mv Retouched_Server-*.AppImage RetouchedServer-${{ github.ref_name }}-linux-${{ matrix.arch_label }}.AppImage
+        env:
+          QMAKE: ${{ github.workspace }}/Qt/${{ env.QT_VERSION }}/${{ matrix.qt_arch }}/bin/qmake
+          QT_DIR: ${{ github.workspace }}/Qt/${{ env.QT_VERSION }}/${{ matrix.qt_arch }}
 
       - name: Package (Windows)
         if: ${{ runner.os == 'Windows' && !matrix.cli_only }}
