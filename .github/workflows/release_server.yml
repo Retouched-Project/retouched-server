@@ -127,11 +127,40 @@ jobs:
       - name: Set Qt paths (Linux)
         if: runner.os == 'Linux' && !matrix.cli_only
         run: |
-          if [ -f "$QT_ROOT_DIR/libexec/qmake" ]; then
-            echo "QMAKE=$QT_ROOT_DIR/libexec/qmake" >> "$GITHUB_ENV"
-          else
-            echo "QMAKE=$QT_ROOT_DIR/bin/qmake" >> "$GITHUB_ENV"
+          # Ensure qt.conf exists — aqt relocates Qt from its build prefix,
+          # but qmake has the old prefix baked in. qt.conf tells it "prefix
+          # is one dir above me" so -query returns correct paths.
+          for dir in "$QT_ROOT_DIR/bin" "$QT_ROOT_DIR/libexec"; do
+            if [ -d "$dir" ] && [ ! -f "$dir/qt.conf" ]; then
+              printf '[Paths]\nPrefix = ..\n' > "$dir/qt.conf"
+            fi
+          done
+
+          QMAKE_FOUND=""
+          for candidate in \
+            "$QT_ROOT_DIR/libexec/qmake" \
+            "$QT_ROOT_DIR/bin/qmake6" \
+            "$QT_ROOT_DIR/bin/qmake"; do
+            if [ -f "$candidate" ]; then
+              chmod +x "$candidate"
+              if "$candidate" -query QT_VERSION > /dev/null 2>&1; then
+                QMAKE_FOUND="$candidate"
+                break
+              fi
+            fi
+          done
+
+          if [ -z "$QMAKE_FOUND" ]; then
+            echo "::error::No working qmake in $QT_ROOT_DIR"
+            echo "bin/:";  ls -1 "$QT_ROOT_DIR/bin/"     2>/dev/null || echo "(missing)"
+            echo "libexec/:"; ls -1 "$QT_ROOT_DIR/libexec/" 2>/dev/null || echo "(missing)"
+            for c in "$QT_ROOT_DIR/libexec/qmake" "$QT_ROOT_DIR/bin/qmake6" "$QT_ROOT_DIR/bin/qmake"; do
+              [ -f "$c" ] && echo "--- $c ---" && file "$c" && "$c" -query QT_VERSION 2>&1 || true
+            done
+            exit 1
           fi
+
+          echo "QMAKE=$QMAKE_FOUND" >> "$GITHUB_ENV"
           echo "Qt6_DIR=$QT_ROOT_DIR/lib/cmake/Qt6" >> "$GITHUB_ENV"
           echo "CMAKE_PREFIX_PATH=$QT_ROOT_DIR/lib/cmake" >> "$GITHUB_ENV"
           echo "LD_LIBRARY_PATH=$QT_ROOT_DIR/lib:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
