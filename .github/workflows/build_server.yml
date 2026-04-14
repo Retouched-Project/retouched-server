@@ -123,7 +123,6 @@ jobs:
       - name: Set Qt paths (Linux)
         if: runner.os == 'Linux' && !matrix.cli_only
         run: |
-          echo "QMAKE=$QT_ROOT_DIR/bin/qmake" >> "$GITHUB_ENV"
           echo "Qt6_DIR=$QT_ROOT_DIR/lib/cmake/Qt6" >> "$GITHUB_ENV"
           echo "CMAKE_PREFIX_PATH=$QT_ROOT_DIR/lib/cmake" >> "$GITHUB_ENV"
 
@@ -150,7 +149,7 @@ jobs:
           
           export QML_SOURCES_PATHS=qml
           export EXTRA_QT_PLUGINS=waylandcompositor
-          export EXTRA_PLATFORM_PLUGINS="wayland-egl;wayland"
+          export EXTRA_PLATFORM_PLUGINS="wayland"
           
           ./linuxdeploy-${{ matrix.arch_label }}.AppImage \
             --appdir AppDir \
