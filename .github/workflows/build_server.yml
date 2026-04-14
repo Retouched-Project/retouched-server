@@ -126,9 +126,10 @@ jobs:
           --target ${{ matrix.target }}
           ${{ matrix.cli_only && '--no-default-features' || '' }}
         env:
-          Qt6_DIR: ${{ runner.os == 'Linux' && !matrix.cli_only && format('{0}/Qt/{1}/{2}/lib/cmake/Qt6', github.workspace, env.QT_VERSION, matrix.qt_arch) || '' }}
-          QT_DIR: ${{ runner.os == 'Linux' && !matrix.cli_only && format('{0}/Qt/{1}/{2}', github.workspace, env.QT_VERSION, matrix.qt_arch) || '' }}
-          CMAKE_PREFIX_PATH: ${{ runner.os == 'Linux' && !matrix.cli_only && format('{0}/Qt/{1}/{2}/lib/cmake', github.workspace, env.QT_VERSION, matrix.qt_arch) || '' }}
+          QMAKE: ${{ runner.os == 'Linux' && !matrix.cli_only && format('{0}/Qt/{1}/{2}/bin/qmake', runner.workspace, env.QT_VERSION, matrix.qt_arch) || '' }}
+          Qt6_DIR: ${{ runner.os == 'Linux' && !matrix.cli_only && format('{0}/Qt/{1}/{2}/lib/cmake/Qt6', runner.workspace, env.QT_VERSION, matrix.qt_arch) || '' }}
+          QT_DIR: ${{ runner.os == 'Linux' && !matrix.cli_only && format('{0}/Qt/{1}/{2}', runner.workspace, env.QT_VERSION, matrix.qt_arch) || '' }}
+          CMAKE_PREFIX_PATH: ${{ runner.os == 'Linux' && !matrix.cli_only && format('{0}/Qt/{1}/{2}/lib/cmake', runner.workspace, env.QT_VERSION, matrix.qt_arch) || '' }}
 
       - name: Package (Linux AppImage)
         if: ${{ runner.os == 'Linux' && !matrix.cli_only }}
@@ -157,8 +158,8 @@ jobs:
             --plugin qt \
             --output appimage
         env:
-          QMAKE: ${{ github.workspace }}/Qt/${{ env.QT_VERSION }}/${{ matrix.qt_arch }}/bin/qmake
-          QT_DIR: ${{ github.workspace }}/Qt/${{ env.QT_VERSION }}/${{ matrix.qt_arch }}
+          QMAKE: ${{ runner.workspace }}/Qt/${{ env.QT_VERSION }}/${{ matrix.qt_arch }}/bin/qmake
+          QT_DIR: ${{ runner.workspace }}/Qt/${{ env.QT_VERSION }}/${{ matrix.qt_arch }}
 
       - name: Package (Windows)
         if: ${{ runner.os == 'Windows' && !matrix.cli_only }}
