@@ -124,16 +124,18 @@ jobs:
           modules: ${{ matrix.qt_modules || '' }}
           install-deps: 'true'
 
+      - name: Set Qt paths (Linux)
+        if: runner.os == 'Linux' && !matrix.cli_only
+        run: |
+          echo "QMAKE=$QT_ROOT_DIR/bin/qmake" >> "$GITHUB_ENV"
+          echo "Qt6_DIR=$QT_ROOT_DIR/lib/cmake/Qt6" >> "$GITHUB_ENV"
+          echo "CMAKE_PREFIX_PATH=$QT_ROOT_DIR/lib/cmake" >> "$GITHUB_ENV"
+
       - name: Build (Rust)
         run: >-
           cargo build --release
           --target ${{ matrix.target }}
           ${{ matrix.cli_only && '--no-default-features' || '' }}
-        env:
-          QMAKE: ${{ runner.os == 'Linux' && !matrix.cli_only && format('{0}/Qt/{1}/{2}/bin/qmake', runner.workspace, env.QT_VERSION, matrix.qt_arch) || '' }}
-          Qt6_DIR: ${{ runner.os == 'Linux' && !matrix.cli_only && format('{0}/Qt/{1}/{2}/lib/cmake/Qt6', runner.workspace, env.QT_VERSION, matrix.qt_arch) || '' }}
-          QT_DIR: ${{ runner.os == 'Linux' && !matrix.cli_only && format('{0}/Qt/{1}/{2}', runner.workspace, env.QT_VERSION, matrix.qt_arch) || '' }}
-          CMAKE_PREFIX_PATH: ${{ runner.os == 'Linux' && !matrix.cli_only && format('{0}/Qt/{1}/{2}/lib/cmake', runner.workspace, env.QT_VERSION, matrix.qt_arch) || '' }}
 
       - name: Package (Linux AppImage)
         if: ${{ runner.os == 'Linux' && !matrix.cli_only }}
@@ -164,8 +166,8 @@ jobs:
             
           mv Retouched_Server-*.AppImage RetouchedServer-${{ github.ref_name }}-linux-${{ matrix.arch_label }}.AppImage
         env:
-          QMAKE: ${{ runner.workspace }}/Qt/${{ env.QT_VERSION }}/${{ matrix.qt_arch }}/bin/qmake
-          QT_DIR: ${{ runner.workspace }}/Qt/${{ env.QT_VERSION }}/${{ matrix.qt_arch }}
+          QMAKE: ${{ env.QT_ROOT_DIR }}/bin/qmake
+          QT_DIR: ${{ env.QT_ROOT_DIR }}
 
       - name: Package (Windows)
         if: ${{ runner.os == 'Windows' && !matrix.cli_only }}
