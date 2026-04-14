@@ -6,7 +6,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  QT_VERSION: 6.10.3
+  QT_VERSION: 6.9.3
 
 jobs:
   build:
@@ -164,17 +164,17 @@ jobs:
           --target ${{ matrix.target }}
           ${{ matrix.cli_only && '--no-default-features' || '' }}
 
-      - name: Package (Linux AppImage)
+      - name: Package (Linux)
         if: ${{ runner.os == 'Linux' && !matrix.cli_only }}
         run: |
           mkdir -p AppDir/usr/bin
           cp target/${{ matrix.target }}/release/retouched-server AppDir/usr/bin/
-          
+
           mkdir -p AppDir/usr/share/applications
           cp packaging/retouched-server.desktop AppDir/usr/share/applications/
           mkdir -p AppDir/usr/share/icons/hicolor/scalable/apps
           cp assets/retouched_logo.svg AppDir/usr/share/icons/hicolor/scalable/apps/retouched-server.svg
-          
+
           curl -LO https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-${{ matrix.arch_label }}.AppImage
           curl -LO https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-${{ matrix.arch_label }}.AppImage
           chmod +x linuxdeploy*.AppImage
@@ -191,6 +191,15 @@ jobs:
             --icon-file AppDir/usr/share/icons/hicolor/scalable/apps/retouched-server.svg \
             --plugin qt \
             --output appimage
+
+          mv Retouched_Server-*.AppImage retouched-server-${{ matrix.name }}.AppImage
+
+          mkdir -p deploy
+          cp -a AppDir/usr/bin deploy/
+          cp -a AppDir/usr/lib deploy/
+          cp -a AppDir/usr/plugins deploy/ 2>/dev/null || true
+          cp -a AppDir/usr/qml deploy/ 2>/dev/null || true
+          cp -a AppDir/usr/translations deploy/ 2>/dev/null || true
 
       - name: Package (Windows)
         if: ${{ runner.os == 'Windows' && !matrix.cli_only }}
@@ -223,8 +232,9 @@ jobs:
         with:
           name: retouched-server-${{ matrix.name }}
           path: |
-            RetouchedServer-*.AppImage
+            retouched-server-*.AppImage
             deploy/
             *.dmg
-            target/${{ matrix.target }}/release/retouched-server*
+            target/${{ matrix.target }}/release/retouched-server
+            target/${{ matrix.target }}/release/retouched-server.exe
           if-no-files-found: ignore
