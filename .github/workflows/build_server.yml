@@ -123,7 +123,11 @@ jobs:
       - name: Set Qt paths (Linux)
         if: runner.os == 'Linux' && !matrix.cli_only
         run: |
-          echo "QMAKE=$QT_ROOT_DIR/bin/qmake" >> "$GITHUB_ENV"
+          if [ -f "$QT_ROOT_DIR/libexec/qmake" ]; then
+            echo "QMAKE=$QT_ROOT_DIR/libexec/qmake" >> "$GITHUB_ENV"
+          else
+            echo "QMAKE=$QT_ROOT_DIR/bin/qmake" >> "$GITHUB_ENV"
+          fi
           echo "Qt6_DIR=$QT_ROOT_DIR/lib/cmake/Qt6" >> "$GITHUB_ENV"
           echo "CMAKE_PREFIX_PATH=$QT_ROOT_DIR/lib/cmake" >> "$GITHUB_ENV"
           echo "LD_LIBRARY_PATH=$QT_ROOT_DIR/lib:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
@@ -148,10 +152,12 @@ jobs:
           curl -LO https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-${{ matrix.arch_label }}.AppImage
           curl -LO https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-${{ matrix.arch_label }}.AppImage
           chmod +x linuxdeploy*.AppImage
-          
+
+          export QMAKE="$QMAKE"
+          export QT_DIR="$QT_ROOT_DIR"
           export QML_SOURCES_PATHS=qml
           export EXTRA_QT_PLUGINS=waylandcompositor
-          
+
           ./linuxdeploy-${{ matrix.arch_label }}.AppImage \
             --appdir AppDir \
             --executable AppDir/usr/bin/retouched-server \
@@ -159,9 +165,6 @@ jobs:
             --icon-file AppDir/usr/share/icons/hicolor/scalable/apps/retouched-server.svg \
             --plugin qt \
             --output appimage
-        env:
-          QMAKE: ${{ env.QT_ROOT_DIR }}/bin/qmake
-          QT_DIR: ${{ env.QT_ROOT_DIR }}
 
       - name: Package (Windows)
         if: ${{ runner.os == 'Windows' && !matrix.cli_only }}
