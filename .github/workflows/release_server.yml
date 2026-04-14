@@ -10,7 +10,7 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  QT_VERSION: 6.9.3
+  QT_VERSION: 6.10.3
 
 jobs:
   build:
@@ -127,6 +127,9 @@ jobs:
       - name: Set Qt paths (Linux)
         if: runner.os == 'Linux' && !matrix.cli_only
         run: |
+          # Ensure qt.conf exists — aqt relocates Qt from its build prefix,
+          # but qmake has the old prefix baked in. qt.conf tells it "prefix
+          # is one dir above me" so -query returns correct paths.
           for dir in "$QT_ROOT_DIR/bin" "$QT_ROOT_DIR/libexec"; do
             if [ -d "$dir" ] && [ ! -f "$dir/qt.conf" ]; then
               printf '[Paths]\nPrefix = ..\n' > "$dir/qt.conf"
@@ -168,17 +171,17 @@ jobs:
           --target ${{ matrix.target }}
           ${{ matrix.cli_only && '--no-default-features' || '' }}
 
-      - name: Package (Linux)
+      - name: Package (Linux AppImage)
         if: ${{ runner.os == 'Linux' && !matrix.cli_only }}
         run: |
           mkdir -p AppDir/usr/bin
           cp target/${{ matrix.target }}/release/retouched-server AppDir/usr/bin/
-
+          
           mkdir -p AppDir/usr/share/applications
           cp packaging/retouched-server.desktop AppDir/usr/share/applications/
           mkdir -p AppDir/usr/share/icons/hicolor/scalable/apps
           cp assets/retouched_logo.svg AppDir/usr/share/icons/hicolor/scalable/apps/retouched-server.svg
-
+          
           curl -LO https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-${{ matrix.arch_label }}.AppImage
           curl -LO https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-${{ matrix.arch_label }}.AppImage
           chmod +x linuxdeploy*.AppImage
@@ -197,15 +200,6 @@ jobs:
             --output appimage
 
           mv Retouched_Server-*.AppImage RetouchedServer-${{ github.ref_name }}-linux-${{ matrix.arch_label }}.AppImage
-
-          DEPLOY_NAME="RetouchedServer-${{ github.ref_name }}-linux-${{ matrix.arch_label }}"
-          mkdir -p "$DEPLOY_NAME"
-          cp -a AppDir/usr/bin "$DEPLOY_NAME/"
-          cp -a AppDir/usr/lib "$DEPLOY_NAME/"
-          cp -a AppDir/usr/plugins "$DEPLOY_NAME/" 2>/dev/null || true
-          cp -a AppDir/usr/qml "$DEPLOY_NAME/" 2>/dev/null || true
-          cp -a AppDir/usr/translations "$DEPLOY_NAME/" 2>/dev/null || true
-          zip -r "$DEPLOY_NAME.zip" "$DEPLOY_NAME"
 
       - name: Package (Windows)
         if: ${{ runner.os == 'Windows' && !matrix.cli_only }}
