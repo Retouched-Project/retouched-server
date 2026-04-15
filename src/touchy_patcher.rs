@@ -6,6 +6,55 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 
+fn safe_extract_zip(
+    archive: &mut zip::ZipArchive<std::fs::File>,
+    dest: &Path,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let canonical_dest = std::fs::canonicalize(dest)?;
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i)?;
+        let name = entry.name().to_string();
+        let out_path = dest.join(&name);
+        if !canonical_dest.join(&name).starts_with(&canonical_dest) {
+            log::warn!("Skipping zip entry with path traversal: {}", name);
+            continue;
+        }
+        if entry.is_dir() {
+            std::fs::create_dir_all(&out_path)?;
+        } else {
+            if let Some(parent) = out_path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            let mut out = std::fs::File::create(&out_path)?;
+            std::io::copy(&mut entry, &mut out)?;
+        }
+    }
+    Ok(())
+}
+
+fn safe_unpack_tar(
+    file: std::fs::File,
+    dest: &Path,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let canonical_dest = std::fs::canonicalize(dest)?;
+    let tar = flate2::read::GzDecoder::new(file);
+    let mut archive = tar::Archive::new(tar);
+    for entry in archive.entries()? {
+        let mut entry = entry?;
+        let path = entry.path()?.to_path_buf();
+        let out_path = dest.join(&path);
+        if !canonical_dest.join(&path).starts_with(&canonical_dest) {
+            log::warn!("Skipping tar entry with path traversal: {}", path.display());
+            continue;
+        }
+        if let Some(parent) = out_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        entry.unpack(&out_path)?;
+    }
+    Ok(())
+}
+
 const APKTOOL_URL: &str = "https://bitbucket.org/iBotPeaches/apktool/downloads/apktool_2.12.1.jar";
 const JADX_RELEASE_API: &str = "https://api.github.com/repos/skylot/jadx/releases/latest";
 const UBER_RELEASE_API: &str =
@@ -182,10 +231,11 @@ pub fn download_jadx(data_dir: &Path) -> Result<PathBuf, Box<dyn std::error::Err
     if jadx_dir.exists() {
         std::fs::remove_dir_all(&jadx_dir)?;
     }
+    std::fs::create_dir_all(&jadx_dir)?;
 
     let file = std::fs::File::open(&zip_path)?;
     let mut archive = zip::ZipArchive::new(file)?;
-    archive.extract(&jadx_dir)?;
+    safe_extract_zip(&mut archive, &jadx_dir)?;
 
     #[cfg(unix)]
     {
@@ -232,12 +282,10 @@ pub fn download_jre(data_dir: &Path) -> Result<PathBuf, Box<dyn std::error::Erro
     if is_zip {
         let file = std::fs::File::open(&archive_path)?;
         let mut archive = zip::ZipArchive::new(file)?;
-        archive.extract(&jre_dir)?;
+        safe_extract_zip(&mut archive, &jre_dir)?;
     } else {
         let file = std::fs::File::open(&archive_path)?;
-        let tar = flate2::read::GzDecoder::new(file);
-        let mut archive = tar::Archive::new(tar);
-        archive.unpack(&jre_dir)?;
+        safe_unpack_tar(file, &jre_dir)?;
     }
     std::fs::remove_file(&archive_path)?;
 
