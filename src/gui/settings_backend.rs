@@ -133,7 +133,8 @@ impl qobject::SettingsBackend {
     }
 
     fn set_new_trust_dir(self: Pin<&mut Self>, dir: QString) {
-        self.set_new_trust_directory(dir);
+        let native = crate::path_util::to_native_path(&dir.to_string());
+        self.set_new_trust_directory(QString::from(&native.to_string_lossy() as &str));
     }
 
     fn set_hosts_ip(self: Pin<&mut Self>, ip: QString) {

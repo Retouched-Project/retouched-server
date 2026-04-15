@@ -25,9 +25,7 @@ Item {
         id: customDirDialog
         title: "Select Retouched Web directory"
         onAccepted: {
-            var path = selectedFolder.toString();
-            path = Qt.platform.os === "windows" ? path.replace("file:///", "") : path.replace("file://", "");
-            backend.set_custom_dir(path);
+            backend.set_custom_dir(selectedFolder.toString());
         }
     }
 

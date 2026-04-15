@@ -109,14 +109,9 @@ fn ensure_initialized(state: &mut WebAppInternalState) {
 }
 
 fn path_to_file_url(path: &std::path::Path) -> String {
-    #[cfg(windows)]
-    {
-        format!("file:///{}", path.display().to_string().replace('\\', "/"))
-    }
-    #[cfg(not(windows))]
-    {
-        format!("file://{}", path.display())
-    }
+    url::Url::from_file_path(path)
+        .map(|u| u.to_string())
+        .unwrap_or_else(|()| format!("file://{}", path.display()))
 }
 
 fn generate_qr_file(data: &str, filename: &str, data_dir: &std::path::Path) -> Option<String> {
@@ -281,9 +276,8 @@ impl qobject::WebAppBackend {
         self.as_mut().set_has_package_json(has_pkg);
 
         let default_dir = crate::web_manager::web_app_dir(&state.data_dir);
-        self.as_mut().set_default_web_dir(QString::from(
-            &default_dir.display().to_string().replace('\\', "/"),
-        ));
+        self.as_mut()
+            .set_default_web_dir(QString::from(&default_dir.to_string_lossy() as &str));
 
         let lan_ip = if let Some(init) = BACKEND_INIT.get() {
             init.shared.detected_lan_ip()
@@ -422,7 +416,7 @@ impl qobject::WebAppBackend {
         log::info!(
             "Starting Axum static server on port {} serving {}",
             WEB_APP_PORT,
-            web_dir.display().to_string().replace('\\', "/")
+            web_dir.display()
         );
 
         drop(state);
@@ -491,7 +485,8 @@ impl qobject::WebAppBackend {
 
     fn set_custom_dir(self: Pin<&mut Self>, dir: QString) {
         let mut state = WEB_STATE.lock().unwrap();
-        state.custom_web_dir = dir.to_string();
+        let native = crate::path_util::to_native_path(&dir.to_string());
+        state.custom_web_dir = native.to_string_lossy().into_owned();
         if let Some(init) = BACKEND_INIT.get() {
             init.config.lock().unwrap().custom_web_dir = if state.custom_web_dir.is_empty() {
                 None

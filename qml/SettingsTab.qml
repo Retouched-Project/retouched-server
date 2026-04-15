@@ -40,7 +40,7 @@ Item {
         id: trustDirDialog
         title: "Select directory to trust"
         onAccepted: {
-            backend.set_new_trust_dir(selectedFolder.toString().replace("file://", ""));
+            backend.set_new_trust_dir(selectedFolder.toString());
         }
     }
 

@@ -46,7 +46,7 @@ Dialog {
     FolderDialog {
         id: gamesDirDialog
         title: "Select games directory"
-        onAccepted: backend.set_games_dir(selectedFolder.toString().replace("file://", ""))
+        onAccepted: backend.set_games_dir(selectedFolder.toString())
     }
 
     StackLayout {

@@ -460,11 +460,7 @@ fn cli_web(action: WebAction, config_path: &Option<PathBuf>, data_dir: Option<Pa
         WebAction::Download { dir } => {
             let target = resolve_web_dir(dir, &config, &data_dir_resolved);
             match web_manager::download_web_app(&target) {
-                Ok(tag) => println!(
-                    "Downloaded retouched_web {} to {}",
-                    tag,
-                    target.display().to_string().replace('\\', "/")
-                ),
+                Ok(tag) => println!("Downloaded retouched_web {} to {}", tag, target.display()),
                 Err(e) => {
                     eprintln!("Download failed: {}", e);
                     std::process::exit(1);
@@ -524,20 +520,26 @@ fn cli_trust(action: TrustAction) {
                 }
             }
         }
-        TrustAction::Add { dir } => match add_trusted_dir(&dir.to_string_lossy()) {
-            Ok(()) => println!("Added trusted directory: {}", dir.display()),
-            Err(e) => {
-                eprintln!("Failed to add trusted directory: {}", e);
-                std::process::exit(1);
+        TrustAction::Add { dir } => {
+            let native = retouched_server::path_util::to_native_path(&dir.to_string_lossy());
+            match add_trusted_dir(&native.to_string_lossy()) {
+                Ok(()) => println!("Added trusted directory: {}", native.display()),
+                Err(e) => {
+                    eprintln!("Failed to add trusted directory: {}", e);
+                    std::process::exit(1);
+                }
             }
-        },
-        TrustAction::Remove { dir } => match remove_trusted_dir(&dir.to_string_lossy()) {
-            Ok(()) => println!("Removed trusted directory: {}", dir.display()),
-            Err(e) => {
-                eprintln!("Failed to remove trusted directory: {}", e);
-                std::process::exit(1);
+        }
+        TrustAction::Remove { dir } => {
+            let native = retouched_server::path_util::to_native_path(&dir.to_string_lossy());
+            match remove_trusted_dir(&native.to_string_lossy()) {
+                Ok(()) => println!("Removed trusted directory: {}", native.display()),
+                Err(e) => {
+                    eprintln!("Failed to remove trusted directory: {}", e);
+                    std::process::exit(1);
+                }
             }
-        },
+        }
     }
 }
 

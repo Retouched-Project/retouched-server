@@ -18,6 +18,7 @@ pub mod gui;
 pub mod gui_logger;
 pub mod http_server;
 pub mod icon_cache;
+pub mod path_util;
 pub mod server;
 pub mod setup;
 pub mod shared_state;

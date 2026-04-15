@@ -172,7 +172,8 @@ impl qobject::PatcherBackend {
     }
 
     fn set_apk_path_value(self: Pin<&mut Self>, path: QString) {
-        self.set_apk_path(path);
+        let native = crate::path_util::to_native_path(&path.to_string());
+        self.set_apk_path(QString::from(&native.to_string_lossy() as &str));
     }
 
     fn set_target_ip_value(self: Pin<&mut Self>, ip: QString) {

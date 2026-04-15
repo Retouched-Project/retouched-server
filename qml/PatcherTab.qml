@@ -26,9 +26,7 @@ Item {
         title: "Select APK file"
         nameFilters: ["APK files (*.apk)"]
         onAccepted: {
-            var path = selectedFile.toString();
-            path = Qt.platform.os === "windows" ? path.replace("file:///", "") : path.replace("file://", "");
-            backend.set_apk_path_value(path);
+            backend.set_apk_path_value(selectedFile.toString());
         }
     }
 
