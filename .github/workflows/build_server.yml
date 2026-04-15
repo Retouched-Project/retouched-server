@@ -222,6 +222,7 @@ jobs:
           name: retouched-server-${{ matrix.name }}
           path: |
             retouched-server-*.AppImage
+            deploy/
             *.dmg
             target/${{ matrix.target }}/release/retouched-server
             target/${{ matrix.target }}/release/retouched-server.exe
