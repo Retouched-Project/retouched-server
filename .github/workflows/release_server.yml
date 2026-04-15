@@ -230,6 +230,7 @@ jobs:
 
       - name: Clean up CLI binary name
         if: ${{ matrix.cli_only }}
+        shell: bash
         run: |
           mv target/${{ matrix.target }}/release/retouched-server "RetouchedServer-${{ github.ref_name }}-${{ matrix.name }}-cli" 2>/dev/null || true
           mv target/${{ matrix.target }}/release/retouched-server.exe "RetouchedServer-${{ github.ref_name }}-${{ matrix.name }}-cli.exe" 2>/dev/null || true
