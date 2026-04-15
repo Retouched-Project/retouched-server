@@ -6,6 +6,7 @@ edition = "2024"
 license = "AGPL-3.0-or-later"
 readme = "README.md"
 description = "A reverse engineered implementation of the Brass Monkey server in Rust."
+repository = "https://github.com/Retouched-Project/retouched-server"
 
 [lib]
 name = "retouched_server"
