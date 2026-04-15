@@ -18,14 +18,14 @@ jobs:
         include:
           # GUI builds (Qt)
           - name: linux-x86_64
-            os: ubuntu-22.04
+            os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
             arch_label: x86_64
             qt_arch: linux_gcc_64
             qt_modules: qtwaylandcompositor
 
           - name: linux-arm64
-            os: ubuntu-22.04-arm
+            os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             arch_label: aarch64
             qt_arch: linux_gcc_arm64
@@ -55,13 +55,13 @@ jobs:
 
           # CLI-only builds (no Qt)
           - name: linux-x86
-            os: ubuntu-22.04
+            os: ubuntu-24.04
             target: i686-unknown-linux-gnu
             cli_only: true
             cross_packages: gcc-multilib
 
           - name: linux-arm32
-            os: ubuntu-22.04
+            os: ubuntu-24.04
             target: armv7-unknown-linux-gnueabihf
             cli_only: true
             cross_packages: gcc-arm-linux-gnueabihf
@@ -144,12 +144,8 @@ jobs:
           done
 
           if [ -z "$QMAKE_FOUND" ]; then
-            echo "::error::No working qmake in $QT_ROOT_DIR"
-            echo "bin/:";  ls -1 "$QT_ROOT_DIR/bin/"     2>/dev/null || echo "(missing)"
-            echo "libexec/:"; ls -1 "$QT_ROOT_DIR/libexec/" 2>/dev/null || echo "(missing)"
-            for c in "$QT_ROOT_DIR/libexec/qmake" "$QT_ROOT_DIR/bin/qmake6" "$QT_ROOT_DIR/bin/qmake"; do
-              [ -f "$c" ] && echo "--- $c ---" && file "$c" && "$c" -query QT_VERSION 2>&1 || true
-            done
+            echo "::error::No working qmake found in $QT_ROOT_DIR"
+            ls -1 "$QT_ROOT_DIR/bin/" 2>/dev/null || true
             exit 1
           fi
 
@@ -164,17 +160,17 @@ jobs:
           --target ${{ matrix.target }}
           ${{ matrix.cli_only && '--no-default-features' || '' }}
 
-      - name: Package (Linux AppImage)
+      - name: Package (Linux)
         if: ${{ runner.os == 'Linux' && !matrix.cli_only }}
         run: |
           mkdir -p AppDir/usr/bin
           cp target/${{ matrix.target }}/release/retouched-server AppDir/usr/bin/
-          
+
           mkdir -p AppDir/usr/share/applications
           cp packaging/retouched-server.desktop AppDir/usr/share/applications/
           mkdir -p AppDir/usr/share/icons/hicolor/scalable/apps
           cp assets/retouched_logo.svg AppDir/usr/share/icons/hicolor/scalable/apps/retouched-server.svg
-          
+
           curl -LO https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-${{ matrix.arch_label }}.AppImage
           curl -LO https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-${{ matrix.arch_label }}.AppImage
           chmod +x linuxdeploy*.AppImage
@@ -191,6 +187,15 @@ jobs:
             --icon-file AppDir/usr/share/icons/hicolor/scalable/apps/retouched-server.svg \
             --plugin qt \
             --output appimage
+
+          mv Retouched_Server-*.AppImage retouched-server-${{ matrix.name }}.AppImage
+
+          mkdir -p deploy
+          cp -a AppDir/usr/bin deploy/
+          cp -a AppDir/usr/lib deploy/
+          cp -a AppDir/usr/plugins deploy/ 2>/dev/null || true
+          cp -a AppDir/usr/qml deploy/ 2>/dev/null || true
+          cp -a AppDir/usr/translations deploy/ 2>/dev/null || true
 
       - name: Package (Windows)
         if: ${{ runner.os == 'Windows' && !matrix.cli_only }}
@@ -223,8 +228,9 @@ jobs:
         with:
           name: retouched-server-${{ matrix.name }}
           path: |
-            RetouchedServer-*.AppImage
+            retouched-server-*.AppImage
             deploy/
             *.dmg
-            target/${{ matrix.target }}/release/retouched-server*
+            target/${{ matrix.target }}/release/retouched-server
+            target/${{ matrix.target }}/release/retouched-server.exe
           if-no-files-found: ignore

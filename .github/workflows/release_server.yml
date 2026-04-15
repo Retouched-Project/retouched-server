@@ -22,14 +22,14 @@ jobs:
         include:
           # GUI builds (Qt)
           - name: linux-x86_64
-            os: ubuntu-22.04
+            os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
             arch_label: x86_64
             qt_arch: linux_gcc_64
             qt_modules: qtwaylandcompositor
 
           - name: linux-arm64
-            os: ubuntu-22.04-arm
+            os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             arch_label: aarch64
             qt_arch: linux_gcc_arm64
@@ -59,13 +59,13 @@ jobs:
 
           # CLI-only builds (no Qt)
           - name: linux-x86
-            os: ubuntu-22.04
+            os: ubuntu-24.04
             target: i686-unknown-linux-gnu
             cli_only: true
             cross_packages: gcc-multilib
 
           - name: linux-arm32
-            os: ubuntu-22.04
+            os: ubuntu-24.04
             target: armv7-unknown-linux-gnueabihf
             cli_only: true
             cross_packages: gcc-arm-linux-gnueabihf
@@ -127,9 +127,6 @@ jobs:
       - name: Set Qt paths (Linux)
         if: runner.os == 'Linux' && !matrix.cli_only
         run: |
-          # Ensure qt.conf exists — aqt relocates Qt from its build prefix,
-          # but qmake has the old prefix baked in. qt.conf tells it "prefix
-          # is one dir above me" so -query returns correct paths.
           for dir in "$QT_ROOT_DIR/bin" "$QT_ROOT_DIR/libexec"; do
             if [ -d "$dir" ] && [ ! -f "$dir/qt.conf" ]; then
               printf '[Paths]\nPrefix = ..\n' > "$dir/qt.conf"
@@ -151,12 +148,8 @@ jobs:
           done
 
           if [ -z "$QMAKE_FOUND" ]; then
-            echo "::error::No working qmake in $QT_ROOT_DIR"
-            echo "bin/:";  ls -1 "$QT_ROOT_DIR/bin/"     2>/dev/null || echo "(missing)"
-            echo "libexec/:"; ls -1 "$QT_ROOT_DIR/libexec/" 2>/dev/null || echo "(missing)"
-            for c in "$QT_ROOT_DIR/libexec/qmake" "$QT_ROOT_DIR/bin/qmake6" "$QT_ROOT_DIR/bin/qmake"; do
-              [ -f "$c" ] && echo "--- $c ---" && file "$c" && "$c" -query QT_VERSION 2>&1 || true
-            done
+            echo "::error::No working qmake found in $QT_ROOT_DIR"
+            ls -1 "$QT_ROOT_DIR/bin/" 2>/dev/null || true
             exit 1
           fi
 
@@ -200,6 +193,15 @@ jobs:
             --output appimage
 
           mv Retouched_Server-*.AppImage RetouchedServer-${{ github.ref_name }}-linux-${{ matrix.arch_label }}.AppImage
+
+          DEPLOY_NAME="RetouchedServer-${{ github.ref_name }}-linux-${{ matrix.arch_label }}"
+          mkdir -p "$DEPLOY_NAME"
+          cp -a AppDir/usr/bin "$DEPLOY_NAME/"
+          cp -a AppDir/usr/lib "$DEPLOY_NAME/"
+          cp -a AppDir/usr/plugins "$DEPLOY_NAME/" 2>/dev/null || true
+          cp -a AppDir/usr/qml "$DEPLOY_NAME/" 2>/dev/null || true
+          cp -a AppDir/usr/translations "$DEPLOY_NAME/" 2>/dev/null || true
+          zip -r "$DEPLOY_NAME.zip" "$DEPLOY_NAME"
 
       - name: Package (Windows)
         if: ${{ runner.os == 'Windows' && !matrix.cli_only }}
