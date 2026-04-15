@@ -99,7 +99,7 @@ jobs:
           sudo apt-get install -y \
             libgl-dev pkg-config mold patchelf libxkbcommon-dev \
             libvulkan-dev libfontconfig1-dev libfreetype6-dev libx11-dev \
-            libxcb1-dev libwayland-dev ${{ matrix.cross_packages }}
+            libxcb1-dev libwayland-dev liblzma-dev ${{ matrix.cross_packages }}
           sudo ln -sf /usr/bin/mold /usr/bin/ld.gold
 
       - name: Set cross linker
