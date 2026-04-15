@@ -1,6 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=Retouched Server
+Comment=A reimplementation of the Brass Monkey server
 Exec=retouched-server
 Icon=retouched-server
 Categories=Utility;Network;

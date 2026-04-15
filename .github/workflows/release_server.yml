@@ -196,12 +196,10 @@ jobs:
 
           DEPLOY_NAME="RetouchedServer-${{ github.ref_name }}-linux-${{ matrix.arch_label }}"
           mkdir -p "$DEPLOY_NAME"
-          cp -a AppDir/usr/bin "$DEPLOY_NAME/"
-          cp -a AppDir/usr/lib "$DEPLOY_NAME/"
-          cp -a AppDir/usr/plugins "$DEPLOY_NAME/" 2>/dev/null || true
-          cp -a AppDir/usr/qml "$DEPLOY_NAME/" 2>/dev/null || true
-          cp -a AppDir/usr/translations "$DEPLOY_NAME/" 2>/dev/null || true
-          zip -r "$DEPLOY_NAME.zip" "$DEPLOY_NAME"
+          cp target/${{ matrix.target }}/release/retouched-server "$DEPLOY_NAME/"
+          cp packaging/retouched-server.desktop "$DEPLOY_NAME/"
+          cp assets/retouched_logo.svg "$DEPLOY_NAME/retouched-server.svg"
+          tar czf "$DEPLOY_NAME.tar.gz" "$DEPLOY_NAME"
 
       - name: Package (Windows)
         if: ${{ runner.os == 'Windows' && !matrix.cli_only }}
@@ -241,6 +239,7 @@ jobs:
         with:
           files: |
             RetouchedServer-*.AppImage
+            RetouchedServer-*.tar.gz
             RetouchedServer-*.zip
             RetouchedServer-*.dmg
             RetouchedServer-*-cli*

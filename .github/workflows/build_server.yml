@@ -190,13 +190,6 @@ jobs:
 
           mv Retouched_Server-*.AppImage retouched-server-${{ matrix.name }}.AppImage
 
-          mkdir -p deploy
-          cp -a AppDir/usr/bin deploy/
-          cp -a AppDir/usr/lib deploy/
-          cp -a AppDir/usr/plugins deploy/ 2>/dev/null || true
-          cp -a AppDir/usr/qml deploy/ 2>/dev/null || true
-          cp -a AppDir/usr/translations deploy/ 2>/dev/null || true
-
       - name: Package (Windows)
         if: ${{ runner.os == 'Windows' && !matrix.cli_only }}
         shell: pwsh
@@ -229,7 +222,6 @@ jobs:
           name: retouched-server-${{ matrix.name }}
           path: |
             retouched-server-*.AppImage
-            deploy/
             *.dmg
             target/${{ matrix.target }}/release/retouched-server
             target/${{ matrix.target }}/release/retouched-server.exe
