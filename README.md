@@ -23,6 +23,10 @@ A reverse engineered implementation of the Brass Monkey server in Rust.
 - [ ] Add an about page. (v1.0.1)
 - [ ] Improve Retouched Web update UX. (v1.0.2)
 - [ ] Switch from polling to pushing updates to the Qt GUI. (v1.1.0)
+- [ ] AUR packaging (x86_64 only)
+- [ ] Binary signing
+- [ ] Windows installer
+- [ ] Better macOS dmg with drag and drop and background
 
 ## License
 
