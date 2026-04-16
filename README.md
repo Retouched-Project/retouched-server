@@ -22,6 +22,7 @@ A reverse engineered implementation of the Brass Monkey server in Rust.
 - [X] Make sure all targets can be built from GitHub actions and they work. (v1.0.0 requirement)
 - [ ] Add an about page. (v1.0.1)
 - [ ] Improve Retouched Web update UX. (v1.0.2)
+- [ ] Update checker (v1.0.3)
 - [ ] Switch from polling to pushing updates to the Qt GUI. (v1.1.0)
 - [ ] AUR packaging (x86_64 only)
 - [ ] Binary signing
