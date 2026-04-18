@@ -484,11 +484,7 @@ fn cli_hosts(action: HostsAction) {
             }
         }
         HostsAction::Apply { ip } => {
-            let ip = ip.unwrap_or_else(|| {
-                local_ip_address::local_ip()
-                    .map(|a| a.to_string())
-                    .unwrap_or_else(|_| "127.0.0.1".to_string())
-            });
+            let ip = ip.unwrap_or_else(|| "127.0.0.1".to_string());
             match apply_hosts_entries(&ip) {
                 Ok(()) => println!("Hosts entries applied for {}", ip),
                 Err(e) => {
