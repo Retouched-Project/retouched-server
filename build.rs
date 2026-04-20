@@ -11,6 +11,7 @@ fn main() {
         "qml/WebAppTab.qml",
         "qml/PatcherTab.qml",
         "qml/SettingsTab.qml",
+        "qml/AboutTab.qml",
         "qml/SetupWizard.qml",
         "qml/components/StatusIndicator.qml",
         "qml/components/DeviceCard.qml",

@@ -39,6 +39,9 @@ ApplicationWindow {
             TabButton {
                 text: "Settings"
             }
+            TabButton {
+                text: "About"
+            }
         }
 
         StackLayout {
@@ -50,6 +53,7 @@ ApplicationWindow {
             WebAppTab {}
             PatcherTab {}
             SettingsTab {}
+            AboutTab {}
         }
     }
 

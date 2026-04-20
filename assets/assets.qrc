@@ -2,6 +2,7 @@
   <qresource prefix="/assets">
     <file alias="retouched_logo_icons.png">retouched_logo_icons.png</file>
     <file alias="retouched_logo.svg">retouched_logo.svg</file>
+    <file alias="retouched_logo_text_server.svg">retouched_logo_text_server.svg</file>
     <file alias="slotwifi.svg">slotwifi.svg</file>
   </qresource>
 </RCC>

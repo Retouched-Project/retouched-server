@@ -35,7 +35,7 @@ macOS:
 ## TODO
 - [X] Make sure all targets can be built from GitHub actions and they work. (v1.0.0 requirement)
 - [X] AUR packaging (x86_64 only)
-- [ ] Add an about page. (v1.0.1)
+- [X] Add an about page. (v1.0.1)
 - [ ] Improve Retouched Web update UX. (v1.0.2)
 - [ ] Update checker (v1.0.3)
 - [ ] Switch from polling to pushing updates to the Qt GUI. (v1.1.0)
