@@ -15,7 +15,6 @@ fn main() {
         "qml/components/StatusIndicator.qml",
         "qml/components/DeviceCard.qml",
         "qml/components/LogViewer.qml",
-        "qml/components/TitleBar.qml",
     ]))
     .qrc("assets/assets.qrc")
     .file("src/gui/server_backend.rs")
@@ -38,16 +37,6 @@ fn main() {
         res.compile().unwrap();
     }
 
-    #[cfg(target_os = "linux")]
-    {
-        let available = std::process::Command::new("pkg-config")
-            .args(["--exists", "wayland-client"])
-            .status()
-            .map_or(false, |s| s.success());
-        if available {
-            println!("cargo:rustc-link-lib=wayland-client");
-        }
-    }
 }
 
 #[cfg(not(feature = "gui"))]

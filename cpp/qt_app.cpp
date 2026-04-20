@@ -11,14 +11,6 @@
 #include <QQuickWindow>
 #include <QTimer>
 #include <QUrl>
-#include <cstring>
-
-#ifdef Q_OS_LINUX
-#if __has_include(<wayland-client.h>)
-#include <wayland-client.h>
-#define HAS_WAYLAND 1
-#endif
-#endif
 
 #ifdef Q_OS_WIN
 #include <shobjidl.h>
@@ -28,47 +20,6 @@
 extern "C" void trayServerToggle();
 extern "C" bool trayIsServerRunning();
 extern "C" void trayQuitRequested();
-
-#ifdef HAS_WAYLAND
-static bool s_hasDecorationManager = false;
-
-static void registryGlobal(void *, struct wl_registry *, uint32_t,
-                           const char *interface, uint32_t) {
-  if (strcmp(interface, "zxdg_decoration_manager_v1") == 0)
-    s_hasDecorationManager = true;
-}
-
-static void registryGlobalRemove(void *, struct wl_registry *, uint32_t) {}
-
-static const struct wl_registry_listener s_registryListener = {
-    registryGlobal,
-    registryGlobalRemove,
-};
-#endif
-
-static bool needsClientSideDecorations() {
-#if defined(Q_OS_LINUX) && defined(HAS_WAYLAND)
-  if (QGuiApplication::platformName() != QLatin1String("wayland"))
-    return false;
-
-  struct wl_display *display = wl_display_connect(nullptr);
-  if (!display)
-    return true;
-
-  s_hasDecorationManager = false;
-  struct wl_registry *registry = wl_display_get_registry(display);
-  wl_registry_add_listener(registry, &s_registryListener, nullptr);
-  wl_display_roundtrip(display);
-  wl_registry_destroy(registry);
-  wl_display_disconnect(display);
-
-  return !s_hasDecorationManager;
-#elif defined(Q_OS_LINUX)
-  return qgetenv("XDG_SESSION_TYPE") == "wayland";
-#else
-  return false;
-#endif
-}
 
 extern "C" int runQtApp(const char *appName, const char *appVersion) {
 #ifdef Q_OS_WIN
@@ -83,19 +34,13 @@ extern "C" int runQtApp(const char *appName, const char *appVersion) {
   app.setApplicationVersion(appVersion);
   app.setWindowIcon(QIcon(":/assets/retouched_logo_icons.png"));
 
-  bool useCsd = needsClientSideDecorations();
-
-  if (qEnvironmentVariableIsEmpty("QT_QUICK_CONTROLS_STYLE")) {
 #ifdef Q_OS_WIN
+  if (qEnvironmentVariableIsEmpty("QT_QUICK_CONTROLS_STYLE")) {
     QQuickStyle::setStyle("Fusion");
-#elif defined(Q_OS_LINUX)
-    if (useCsd)
-      QQuickStyle::setStyle("Fusion");
-#endif
   }
+#endif
 
   auto *engine = new QQmlApplicationEngine;
-  engine->rootContext()->setContextProperty("useCsd", useCsd);
   engine->load(
       QUrl(QStringLiteral("qrc:/qt/qml/com/retouched/server/qml/main.qml")));
 
