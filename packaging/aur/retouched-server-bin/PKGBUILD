@@ -1,0 +1,31 @@
+# Maintainer: ddavef
+
+pkgname=retouched-server-bin
+_pkgname=retouched-server
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="A reverse engineered implementation of the Brass Monkey server in Rust"
+arch=('x86_64')
+url="https://github.com/Retouched-Project/retouched-server"
+license=('AGPL-3.0-or-later')
+depends=(
+    'qt6-base'
+    'qt6-declarative'
+)
+optdepends=(
+    'polkit: for modifying /etc/hosts via pkexec'
+    'ufw: firewall rule management'
+    'firewalld: firewall rule management'
+)
+provides=("${_pkgname}=${pkgver}")
+conflicts=("${_pkgname}" "${_pkgname}-git")
+source=("${pkgname}-${pkgver}.tar.gz::${url}/releases/download/v${pkgver}/RetouchedServer-v${pkgver}-linux-x86_64.tar.gz")
+sha256sums=('0e900d3ed708b8318281f5b8817198a3f3b962fcbf38da830a97922932f7c384')
+
+package() {
+    cd "RetouchedServer-v${pkgver}-linux-x86_64"
+
+    install -Dm755 retouched-server "${pkgdir}/usr/bin/retouched-server"
+    install -Dm644 retouched-server.desktop "${pkgdir}/usr/share/applications/retouched-server.desktop"
+    install -Dm644 retouched-server.svg "${pkgdir}/usr/share/icons/hicolor/scalable/apps/retouched-server.svg"
+}

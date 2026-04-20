@@ -1,0 +1,55 @@
+# Maintainer: ddavef
+
+pkgname=retouched-server-git
+_pkgname=retouched-server
+pkgver=1.0.0.r0.gHEAD
+pkgrel=1
+pkgdesc="A reverse engineered implementation of the Brass Monkey server in Rust (git)"
+arch=('x86_64')
+url="https://github.com/Retouched-Project/retouched-server"
+license=('AGPL-3.0-or-later')
+depends=(
+    'qt6-base'
+    'qt6-declarative'
+)
+makedepends=(
+    'git'
+    'rust'
+    'cargo'
+    'clang'
+    'qt6-base'
+    'qt6-declarative'
+    'pkgconf'
+)
+optdepends=(
+    'polkit: for modifying /etc/hosts via pkexec'
+    'ufw: firewall rule management'
+    'firewalld: firewall rule management'
+)
+provides=("${_pkgname}=${pkgver%.r*}")
+conflicts=("${_pkgname}" "${_pkgname}-bin")
+source=("git+${url}.git")
+sha256sums=('SKIP')
+
+pkgver() {
+    cd "${_pkgname}"
+    local tag
+    tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
+    tag="${tag#v}"
+    printf "%s.r%s.g%s" "${tag}" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
+build() {
+    cd "${_pkgname}"
+    export RUSTUP_TOOLCHAIN=stable
+    export CARGO_TARGET_DIR=target
+    cargo build --release --frozen
+}
+
+package() {
+    cd "${_pkgname}"
+
+    install -Dm755 "target/release/retouched-server" "${pkgdir}/usr/bin/retouched-server"
+    install -Dm644 "packaging/retouched-server.desktop" "${pkgdir}/usr/share/applications/retouched-server.desktop"
+    install -Dm644 "assets/retouched_logo.svg" "${pkgdir}/usr/share/icons/hicolor/scalable/apps/retouched-server.svg"
+}
