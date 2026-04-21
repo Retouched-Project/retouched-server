@@ -21,8 +21,8 @@ default = ["gui"]
 gui = ["dep:cxx", "dep:cxx-qt", "dep:cxx-qt-lib", "dep:cxx-qt-build"]
 
 [dependencies]
-bronze-monkey = { git = "https://github.com/Retouched-Project/bronze-monkey", branch = "main" }
-# bronze-monkey = { path = ".." }
+# bronze-monkey = { git = "https://github.com/Retouched-Project/bronze-monkey", branch = "main" }
+bronze-monkey = { path = ".." }
 
 tokio = { version = "1", features = ["full"] }
 clap = { version = "4", features = ["derive"] }

@@ -9,7 +9,7 @@ use tokio::sync::{Mutex, RwLock, broadcast};
 
 use bronze_monkey::devices::bm_address::BMAddress;
 use bronze_monkey::devices::device_core::DeviceCore;
-use bronze_monkey::engine::actions::{Action, LogLevel, RegistryEventKind};
+use bronze_monkey::engine::actions::{Action, RegistryEventKind};
 use bronze_monkey::engine::processing::Engine;
 use bronze_monkey::externals::handshake::Handshake;
 use bronze_monkey::messages::bm_encoding::Value;
@@ -507,14 +507,6 @@ async fn route_actions(
                 }
                 handle_invoke(state, source_client_id, method, params).await;
             }
-
-            Action::Log { level, message } => match level {
-                LogLevel::Trace => log::trace!("[BMEngine] {}", message),
-                LogLevel::Debug => log::debug!("[BMEngine] {}", message),
-                LogLevel::Info => log::info!("[BMEngine] {}", message),
-                LogLevel::Warn => log::warn!("[BMEngine] {}", message),
-                LogLevel::Error => log::error!("[BMEngine] {}", message),
-            },
 
             _ => {}
         }
