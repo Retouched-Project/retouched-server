@@ -340,8 +340,7 @@ dependencies = [
 
 [[package]]
 name = "bronze-monkey"
-version = "0.2.1"
-source = "git+https://github.com/Retouched-Project/bronze-monkey?branch=main#735935d0cf19d432be7c3596c0e67fe45d63d55e"
+version = "1.0.0"
 dependencies = [
  "base64",
  "byteorder",
