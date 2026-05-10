@@ -125,6 +125,7 @@ impl Server {
                 result = listener.accept() => {
                     match result {
                         Ok((stream, addr)) => {
+                            let _ = stream.set_nodelay(true);
                             log::info!("New connection from {}", addr);
                             let state = self.state.clone();
                             let max_packet = self.config.max_packet_size;
@@ -168,6 +169,32 @@ async fn handle_client(
     shutdown_rx: &mut broadcast::Receiver<()>,
     server_device_id: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let mut peek_buf = [0u8; 1];
+    if let Ok(Ok(n)) = tokio::time::timeout(
+        std::time::Duration::from_millis(200),
+        stream.peek(&mut peek_buf),
+    )
+    .await
+    {
+        if n > 0 && peek_buf[0] == b'<' {
+            let mut req = [0u8; 23];
+            if let Ok(Ok(_)) = tokio::time::timeout(
+                std::time::Duration::from_millis(200),
+                stream.read_exact(&mut req),
+            )
+            .await
+            {
+                if req.starts_with(b"<policy-file-request") {
+                    log::info!("Serving socket policy file to {}", addr);
+                    let policy = r#"<?xml version="1.0"?><cross-domain-policy><allow-access-from domain="*" to-ports="1008-49151" /></cross-domain-policy>"#;
+                    let _ = stream.write_all(policy.as_bytes()).await;
+                    let _ = stream.write_all(&[0]).await;
+                    return Ok(());
+                }
+            }
+        }
+    }
+
     let version_bytes = Handshake::default().to_bytes();
     stream.write_all(&version_bytes).await?;
     log::debug!("Sent handshake to {}", addr);

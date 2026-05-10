@@ -28,7 +28,13 @@ pub fn build_router(state: Arc<HttpServerState>) -> Router {
         .route("/bmregistry/metrics", post(handle_metrics))
         .route("/onboard", get(handle_onboard))
         .route("/ca.crt", get(handle_ca_cert))
+        .route("/crossdomain.xml", get(handle_crossdomain))
         .with_state(state)
+}
+
+async fn handle_crossdomain() -> impl IntoResponse {
+    let xml = r#"<?xml version="1.0"?><cross-domain-policy><allow-access-from domain="*" to-ports="1008-49151" /></cross-domain-policy>"#;
+    (StatusCode::OK, [("content-type", "application/xml")], xml).into_response()
 }
 
 #[derive(Deserialize)]
