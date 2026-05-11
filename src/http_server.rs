@@ -24,6 +24,7 @@ pub struct HttpServerState {
 pub fn build_router(state: Arc<HttpServerState>) -> Router {
     Router::new()
         .route("/bmregistry/getInfo.jsp", get(handle_get_info))
+        .route("/bmregistry/BMVerify", get(handle_bm_verify))
         .route("/apps/icons/{app_id}", get(handle_icon))
         .route("/bmregistry/metrics", post(handle_metrics))
         .route("/onboard", get(handle_onboard))
@@ -57,6 +58,11 @@ struct GetInfoResponse {
     trial: bool,
     #[serde(rename = "canPlay")]
     can_play: bool,
+}
+
+async fn handle_bm_verify() -> impl IntoResponse {
+    log::info!("[HTTP] BMVerify: Successful authentication (blind success)");
+    StatusCode::OK
 }
 
 async fn handle_get_info(

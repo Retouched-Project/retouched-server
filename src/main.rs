@@ -311,16 +311,52 @@ async fn run_headless(cli: Cli) -> Result<(), Box<dyn std::error::Error + Send +
     let http_addr = format!("{}:{}", config.server_host, config.http_port);
     let http_listener = tokio::net::TcpListener::bind(&http_addr).await?;
     log::info!("HTTP server listening on {}", http_addr);
-    tokio::spawn(async move {
-        if let Err(e) = axum::serve(
-            http_listener,
-            http_router.into_make_service_with_connect_info::<std::net::SocketAddr>(),
-        )
-        .await
-        {
-            log::error!("HTTP server error: {}", e);
+    tokio::spawn({
+        let http_router = http_router.clone();
+        async move {
+            if let Err(e) = axum::serve(
+                http_listener,
+                http_router.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+            )
+            .await
+            {
+                log::error!("HTTP server error: {}", e);
+            }
         }
     });
+
+    #[cfg(target_os = "windows")]
+    {
+        let policy_addr = format!("{}:843", config.server_host);
+        tokio::spawn(async move {
+            match tokio::net::TcpListener::bind(&policy_addr).await {
+                Ok(listener) => {
+                    log::info!("Socket Policy server listening on {}", policy_addr);
+                    loop {
+                        if let Ok((mut socket, addr)) = listener.accept().await {
+                            tokio::spawn(async move {
+                                use tokio::io::{AsyncReadExt, AsyncWriteExt};
+                                let mut peek_buf = [0u8; 1];
+                                if let Ok(Ok(n)) = tokio::time::timeout(std::time::Duration::from_millis(500), socket.peek(&mut peek_buf)).await {
+                                    if n > 0 && peek_buf[0] == b'<' {
+                                        let mut discard = [0u8; 23];
+                                        let _ = tokio::time::timeout(std::time::Duration::from_millis(200), socket.read_exact(&mut discard)).await;
+
+                                        let policy = r#"<?xml version="1.0"?><cross-domain-policy><allow-access-from domain="*" to-ports="1008-49151" /></cross-domain-policy>"#;
+                                        let _ = socket.write_all(policy.as_bytes()).await;
+                                        let _ = socket.write_all(&[0]).await;
+                                        let _ = socket.flush().await;
+                                        log::debug!("Served policy on 843 to {}", addr);
+                                    }
+                                }
+                            });
+                        }
+                    }
+                }
+                Err(e) => log::warn!("Could not bind privileged policy port 843: {}.", e),
+            }
+        });
+    }
 
     let bridge_opt = if run_bridge {
         let lan_ip = local_ip_address::local_ip()
