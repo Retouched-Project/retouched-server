@@ -120,11 +120,47 @@ impl Server {
 
         let mut shutdown_rx = self.shutdown_tx.subscribe();
 
+        let policy_addr = format!("{}:9010", self.config.server_host);
+        if let Ok(policy_listener) = TcpListener::bind(&policy_addr).await {
+            log::info!("Dedicated policy server listening on {}", policy_addr);
+            let mut policy_shutdown_rx = self.shutdown_tx.subscribe();
+            tokio::spawn(async move {
+                loop {
+                    tokio::select! {
+                        result = policy_listener.accept() => {
+                            if let Ok((mut stream, addr)) = result {
+                                log::info!("Policy request on port 9010 from {}", addr);
+                                tokio::spawn(async move {
+                                    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+                                    let mut peek_buf = [0u8; 1];
+                                    if let Ok(Ok(n)) = tokio::time::timeout(std::time::Duration::from_millis(500), stream.peek(&mut peek_buf)).await {
+                                        if n > 0 && peek_buf[0] == b'<' {
+                                            let mut discard = [0u8; 23];
+                                            let _ = tokio::time::timeout(std::time::Duration::from_millis(200), stream.read_exact(&mut discard)).await;
+
+                                            let policy = r#"<?xml version="1.0"?><cross-domain-policy><allow-access-from domain="*" to-ports="1008-49151" /></cross-domain-policy>"#;
+                                            let _ = stream.write_all(policy.as_bytes()).await;
+                                            let _ = stream.write_all(&[0]).await;
+                                            let _ = stream.flush().await;
+                                        }
+                                    }
+                                });
+                            }
+                        }
+                        _ = policy_shutdown_rx.recv() => break,
+                    }
+                }
+            });
+        } else {
+            log::warn!("Could not bind dedicated policy port 9010");
+        }
+
         loop {
             tokio::select! {
                 result = listener.accept() => {
                     match result {
                         Ok((stream, addr)) => {
+                            let _ = stream.set_nodelay(true);
                             log::info!("New connection from {}", addr);
                             let state = self.state.clone();
                             let max_packet = self.config.max_packet_size;
@@ -168,6 +204,32 @@ async fn handle_client(
     shutdown_rx: &mut broadcast::Receiver<()>,
     server_device_id: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let mut peek_buf = [0u8; 1];
+    if let Ok(Ok(n)) = tokio::time::timeout(
+        std::time::Duration::from_millis(200),
+        stream.peek(&mut peek_buf),
+    )
+    .await
+    {
+        if n > 0 && peek_buf[0] == b'<' {
+            let mut req = [0u8; 23];
+            if let Ok(Ok(_)) = tokio::time::timeout(
+                std::time::Duration::from_millis(200),
+                stream.read_exact(&mut req),
+            )
+            .await
+            {
+                if req.starts_with(b"<policy-file-request") {
+                    log::info!("Serving socket policy file to {}", addr);
+                    let policy = r#"<?xml version="1.0"?><cross-domain-policy><allow-access-from domain="*" to-ports="1008-49151" /></cross-domain-policy>"#;
+                    let _ = stream.write_all(policy.as_bytes()).await;
+                    let _ = stream.write_all(&[0]).await;
+                    return Ok(());
+                }
+            }
+        }
+    }
+
     let version_bytes = Handshake::default().to_bytes();
     stream.write_all(&version_bytes).await?;
     log::debug!("Sent handshake to {}", addr);

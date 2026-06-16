@@ -341,6 +341,7 @@ dependencies = [
 [[package]]
 name = "bronze-monkey"
 version = "1.0.0"
+source = "git+https://github.com/Retouched-Project/bronze-monkey?branch=main#61494b9fa07c26d38176d6564c7de5b031e3ee6b"
 dependencies = [
  "base64",
  "byteorder",
@@ -2943,7 +2944,7 @@ dependencies = [
 
 [[package]]
 name = "retouched-server"
-version = "1.0.1"
+version = "1.0.3"
 dependencies = [
  "axum",
  "axum-server",
