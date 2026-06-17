@@ -337,10 +337,19 @@ async fn run_headless(cli: Cli) -> Result<(), Box<dyn std::error::Error + Send +
                             tokio::spawn(async move {
                                 use tokio::io::{AsyncReadExt, AsyncWriteExt};
                                 let mut peek_buf = [0u8; 1];
-                                if let Ok(Ok(n)) = tokio::time::timeout(std::time::Duration::from_millis(500), socket.peek(&mut peek_buf)).await {
+                                if let Ok(Ok(n)) = tokio::time::timeout(
+                                    std::time::Duration::from_millis(500),
+                                    socket.peek(&mut peek_buf),
+                                )
+                                .await
+                                {
                                     if n > 0 && peek_buf[0] == b'<' {
                                         let mut discard = [0u8; 23];
-                                        let _ = tokio::time::timeout(std::time::Duration::from_millis(200), socket.read_exact(&mut discard)).await;
+                                        let _ = tokio::time::timeout(
+                                            std::time::Duration::from_millis(200),
+                                            socket.read_exact(&mut discard),
+                                        )
+                                        .await;
 
                                         let policy = r#"<?xml version="1.0"?><cross-domain-policy><allow-access-from domain="*" to-ports="1008-49151" /></cross-domain-policy>"#;
                                         let _ = socket.write_all(policy.as_bytes()).await;

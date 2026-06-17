@@ -17,6 +17,8 @@ use bronze_monkey::types::device_type::DeviceType;
 use crate::config::Config;
 use crate::shared_state::{ConnectedClient, SharedState};
 
+const CROSS_DOMAIN_POLICY: &str = r#"<?xml version="1.0"?><cross-domain-policy><allow-access-from domain="*" to-ports="1008-49151" /></cross-domain-policy>"#;
+
 struct Client {
     device_id: Option<String>,
     device_name: Option<String>,
@@ -122,6 +124,7 @@ impl Server {
                 result = listener.accept() => {
                     match result {
                         Ok((stream, addr)) => {
+                            let _ = stream.set_nodelay(true);
                             log::info!("New connection from {}", addr);
                             let state = self.state.clone();
                             let max_packet = self.config.max_packet_size;
@@ -162,6 +165,31 @@ async fn handle_client(
     max_packet_size: usize,
     shutdown_rx: &mut broadcast::Receiver<()>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let mut peek_buf = [0u8; 1];
+    if let Ok(Ok(n)) = tokio::time::timeout(
+        std::time::Duration::from_millis(200),
+        stream.peek(&mut peek_buf),
+    )
+    .await
+    {
+        if n > 0 && peek_buf[0] == b'<' {
+            let mut req = [0u8; 23];
+            if let Ok(Ok(_)) = tokio::time::timeout(
+                std::time::Duration::from_millis(200),
+                stream.read_exact(&mut req),
+            )
+            .await
+            {
+                if req.starts_with(b"<policy-file-request") {
+                    log::info!("Serving socket policy file to {}", addr);
+                    let _ = stream.write_all(CROSS_DOMAIN_POLICY.as_bytes()).await;
+                    let _ = stream.write_all(&[0]).await;
+                    return Ok(());
+                }
+            }
+        }
+    }
+
     let version_bytes = Handshake::default().to_bytes();
     stream.write_all(&version_bytes).await?;
     log::debug!("Sent handshake to {}", addr);
@@ -294,7 +322,11 @@ async fn route_output(state: &Arc<ServerState>, output: &ProcessOutput, source_c
                 record_pending_connection(state, source_client_id, info).await;
             }
             Event::Invoke { method, .. } => {
-                log::debug!("Unhandled invoke from client {}: {}", source_client_id, method);
+                log::debug!(
+                    "Unhandled invoke from client {}: {}",
+                    source_client_id,
+                    method
+                );
             }
             _ => {}
         }
@@ -305,7 +337,10 @@ async fn route_output(state: &Arc<ServerState>, output: &ProcessOutput, source_c
         output
             .outgoings
             .iter()
-            .filter_map(|o| d2c.get(&o.target_device_id).map(|&cid| (cid, o.payload.clone())))
+            .filter_map(|o| {
+                d2c.get(&o.target_device_id)
+                    .map(|&cid| (cid, o.payload.clone()))
+            })
             .collect()
     };
     if routes.is_empty() {
