@@ -4,3 +4,4 @@
 pub mod firewall;
 pub mod flash_trust;
 pub mod hosts;
+pub mod port_redirect;

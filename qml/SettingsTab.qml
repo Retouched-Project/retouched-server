@@ -226,6 +226,50 @@ Item {
                 }
             }
 
+            Rectangle {
+                Layout.fillWidth: true
+                height: 1
+                color: palette.mid
+                Layout.topMargin: 4
+                Layout.bottomMargin: 4
+            }
+
+            Label {
+                text: "Policy Port Redirect (843)"
+                font.bold: true
+                font.pixelSize: 16
+                Layout.leftMargin: 8
+            }
+
+            Label {
+                text: "Redirects the privileged Flash/Unity policy port 843 to the server port, so it can be served without running as root."
+                Layout.leftMargin: 8
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                opacity: 0.7
+            }
+
+            Label {
+                text: "Backend: " + backend.redirect_backend
+                Layout.leftMargin: 8
+                visible: backend.redirect_backend !== "" && backend.redirect_backend !== "none"
+            }
+
+            RowLayout {
+                Layout.leftMargin: 8
+                spacing: 8
+                visible: backend.redirect_backend !== "none" && backend.redirect_backend !== ""
+
+                Button {
+                    text: "Enable redirect"
+                    onClicked: backend.apply_policy_redirect()
+                }
+                Button {
+                    text: "Disable redirect"
+                    onClicked: backend.remove_policy_redirect()
+                }
+            }
+
             Item {
                 Layout.fillHeight: true
             }

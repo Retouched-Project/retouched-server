@@ -10,6 +10,7 @@ import com.retouched.server
 Dialog {
     id: wizard
     modal: true
+    anchors.centerIn: Overlay.overlay
     width: 520
     height: 420
     title: "Setup Wizard"

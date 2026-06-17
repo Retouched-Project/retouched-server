@@ -85,6 +85,10 @@ enum Commands {
         #[command(subcommand)]
         action: FirewallAction,
     },
+    Redirect {
+        #[command(subcommand)]
+        action: RedirectAction,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -124,6 +128,13 @@ enum FirewallAction {
     Close,
 }
 
+#[derive(Subcommand, Debug)]
+enum RedirectAction {
+    Status,
+    Apply,
+    Remove,
+}
+
 fn default_config_path() -> PathBuf {
     directories::ProjectDirs::from("com", "retouched", "retouched-server")
         .map(|d| d.config_dir().join("config.json"))
@@ -156,6 +167,7 @@ fn main() {
         Some(Commands::Hosts { action }) => cli_hosts(action),
         Some(Commands::Trust { action }) => cli_trust(action),
         Some(Commands::Firewall { action }) => cli_firewall(action),
+        Some(Commands::Redirect { action }) => cli_redirect(action, &cli.config),
     }
 }
 
@@ -581,6 +593,34 @@ fn cli_trust(action: TrustAction) {
                 }
             }
         }
+    }
+}
+
+fn cli_redirect(action: RedirectAction, config: &Option<PathBuf>) {
+    use setup::port_redirect::{apply, detect_backend, remove};
+    let backend = detect_backend();
+    let config_path = config.clone().unwrap_or_else(default_config_path);
+    let target_port = Config::from_file(&config_path)
+        .map(|c| c.server_port)
+        .unwrap_or(8088);
+    match action {
+        RedirectAction::Status => {
+            println!("Redirect backend: {} (843 -> {})", backend.name(), target_port)
+        }
+        RedirectAction::Apply => match apply(&backend, target_port) {
+            Ok(()) => println!("Policy port redirect applied (843 -> {}).", target_port),
+            Err(e) => {
+                eprintln!("Failed to apply redirect: {}", e);
+                std::process::exit(1);
+            }
+        },
+        RedirectAction::Remove => match remove(&backend, target_port) {
+            Ok(()) => println!("Policy port redirect removed."),
+            Err(e) => {
+                eprintln!("Failed to remove redirect: {}", e);
+                std::process::exit(1);
+            }
+        },
     }
 }
 

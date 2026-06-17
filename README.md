@@ -36,9 +36,9 @@ macOS:
 - [X] Make sure all targets can be built from GitHub actions and they work. (v1.0.0 requirement)
 - [X] AUR packaging (x86_64 only)
 - [X] Add an about page. (v1.0.1)
-- [ ] Improve Retouched Web update UX. (v1.0.4)
-- [ ] Update checker (v1.0.5)
-- [ ] Switch from polling to pushing updates to the Qt GUI. (v1.1.0)
+- [ ] Improve Retouched Web update UX.
+- [ ] Update checker
+- [ ] Switch from polling to pushing updates to the Qt GUI.
 - [ ] Binary signing
 - [ ] Windows installer
 - [ ] Better macOS dmg with drag and drop and background

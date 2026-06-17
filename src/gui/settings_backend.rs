@@ -10,6 +10,7 @@ pub struct SettingsBackendRust {
     hosts_redirect_ip: QString,
     hosts_status_json: QString,
     firewall_backend: QString,
+    redirect_backend: QString,
 }
 
 impl Default for SettingsBackendRust {
@@ -20,6 +21,7 @@ impl Default for SettingsBackendRust {
             hosts_redirect_ip: QString::from("127.0.0.1"),
             hosts_status_json: QString::from("[]"),
             firewall_backend: QString::from(""),
+            redirect_backend: QString::from(""),
         }
     }
 }
@@ -39,6 +41,7 @@ pub mod qobject {
         #[qproperty(QString, hosts_redirect_ip)]
         #[qproperty(QString, hosts_status_json)]
         #[qproperty(QString, firewall_backend)]
+        #[qproperty(QString, redirect_backend)]
         type SettingsBackend = super::SettingsBackendRust;
 
         #[qinvokable]
@@ -70,6 +73,12 @@ pub mod qobject {
 
         #[qinvokable]
         fn close_ports(self: &SettingsBackend);
+
+        #[qinvokable]
+        fn apply_policy_redirect(self: &SettingsBackend);
+
+        #[qinvokable]
+        fn remove_policy_redirect(self: &SettingsBackend);
     }
 }
 
@@ -98,7 +107,11 @@ impl qobject::SettingsBackend {
         ));
 
         let backend = crate::setup::firewall::detect_backend();
-        self.set_firewall_backend(QString::from(backend.name()));
+        self.as_mut()
+            .set_firewall_backend(QString::from(backend.name()));
+
+        let redirect = crate::setup::port_redirect::detect_backend();
+        self.set_redirect_backend(QString::from(redirect.name()));
     }
 
     fn add_trust_dir(self: Pin<&mut Self>) {
@@ -171,4 +184,29 @@ impl qobject::SettingsBackend {
             Err(e) => log::error!("Failed to close ports: {}", e),
         }
     }
+
+    fn apply_policy_redirect(&self) {
+        let backend = crate::setup::port_redirect::detect_backend();
+        let port = redirect_target_port();
+        match crate::setup::port_redirect::apply(&backend, port) {
+            Ok(()) => log::info!("Policy port redirect applied (843 -> {})", port),
+            Err(e) => log::error!("Failed to apply policy redirect: {}", e),
+        }
+    }
+
+    fn remove_policy_redirect(&self) {
+        let backend = crate::setup::port_redirect::detect_backend();
+        let port = redirect_target_port();
+        match crate::setup::port_redirect::remove(&backend, port) {
+            Ok(()) => log::info!("Policy port redirect removed"),
+            Err(e) => log::error!("Failed to remove policy redirect: {}", e),
+        }
+    }
+}
+
+fn redirect_target_port() -> u16 {
+    crate::gui::server_backend::BACKEND_INIT
+        .get()
+        .map(|init| init.config.lock().unwrap().server_port)
+        .unwrap_or(8088)
 }
