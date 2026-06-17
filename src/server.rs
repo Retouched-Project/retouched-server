@@ -7,12 +7,11 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Mutex, RwLock, broadcast};
 
+use bronze_monkey::codec::externals::bm_registry_info::BMRegistryInfo;
+use bronze_monkey::codec::externals::handshake::Handshake;
 use bronze_monkey::devices::bm_address::BMAddress;
 use bronze_monkey::devices::device_core::DeviceCore;
-use bronze_monkey::engine::actions::{Action, RegistryEventKind};
-use bronze_monkey::engine::processing::Engine;
-use bronze_monkey::externals::handshake::Handshake;
-use bronze_monkey::messages::bm_encoding::Value;
+use bronze_monkey::engine::{DeviceRecord, Engine, Event, Outgoing, ProcessOutput};
 use bronze_monkey::types::device_type::DeviceType;
 
 use crate::config::Config;
@@ -68,7 +67,6 @@ pub struct Server {
     config: Config,
     state: Arc<ServerState>,
     shutdown_tx: broadcast::Sender<()>,
-    server_device_id: String,
 }
 
 impl Server {
@@ -82,7 +80,7 @@ impl Server {
 
         let mut engine = Engine::new();
         let core = DeviceCore {
-            device_id: server_device_id.clone(),
+            device_id: server_device_id,
             device_name: "RetouchedServer".into(),
             device_type: DeviceType::Server,
             address: Some(BMAddress {
@@ -105,7 +103,6 @@ impl Server {
             config,
             state,
             shutdown_tx,
-            server_device_id,
         }
     }
 
@@ -120,56 +117,18 @@ impl Server {
 
         let mut shutdown_rx = self.shutdown_tx.subscribe();
 
-        let policy_addr = format!("{}:9010", self.config.server_host);
-        if let Ok(policy_listener) = TcpListener::bind(&policy_addr).await {
-            log::info!("Dedicated policy server listening on {}", policy_addr);
-            let mut policy_shutdown_rx = self.shutdown_tx.subscribe();
-            tokio::spawn(async move {
-                loop {
-                    tokio::select! {
-                        result = policy_listener.accept() => {
-                            if let Ok((mut stream, addr)) = result {
-                                log::info!("Policy request on port 9010 from {}", addr);
-                                tokio::spawn(async move {
-                                    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-                                    let mut peek_buf = [0u8; 1];
-                                    if let Ok(Ok(n)) = tokio::time::timeout(std::time::Duration::from_millis(500), stream.peek(&mut peek_buf)).await {
-                                        if n > 0 && peek_buf[0] == b'<' {
-                                            let mut discard = [0u8; 23];
-                                            let _ = tokio::time::timeout(std::time::Duration::from_millis(200), stream.read_exact(&mut discard)).await;
-
-                                            let policy = r#"<?xml version="1.0"?><cross-domain-policy><allow-access-from domain="*" to-ports="1008-49151" /></cross-domain-policy>"#;
-                                            let _ = stream.write_all(policy.as_bytes()).await;
-                                            let _ = stream.write_all(&[0]).await;
-                                            let _ = stream.flush().await;
-                                        }
-                                    }
-                                });
-                            }
-                        }
-                        _ = policy_shutdown_rx.recv() => break,
-                    }
-                }
-            });
-        } else {
-            log::warn!("Could not bind dedicated policy port 9010");
-        }
-
         loop {
             tokio::select! {
                 result = listener.accept() => {
                     match result {
                         Ok((stream, addr)) => {
-                            let _ = stream.set_nodelay(true);
                             log::info!("New connection from {}", addr);
                             let state = self.state.clone();
                             let max_packet = self.config.max_packet_size;
                             let mut shutdown_rx2 = self.shutdown_tx.subscribe();
-                            let server_device_id = self.server_device_id.clone();
                             tokio::spawn(async move {
                                 if let Err(e) = handle_client(
-                                    stream, addr, state, max_packet,
-                                    &mut shutdown_rx2, &server_device_id,
+                                    stream, addr, state, max_packet, &mut shutdown_rx2,
                                 ).await {
                                     log::error!("Client {} error: {}", addr, e);
                                 }
@@ -202,34 +161,7 @@ async fn handle_client(
     state: Arc<ServerState>,
     max_packet_size: usize,
     shutdown_rx: &mut broadcast::Receiver<()>,
-    server_device_id: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let mut peek_buf = [0u8; 1];
-    if let Ok(Ok(n)) = tokio::time::timeout(
-        std::time::Duration::from_millis(200),
-        stream.peek(&mut peek_buf),
-    )
-    .await
-    {
-        if n > 0 && peek_buf[0] == b'<' {
-            let mut req = [0u8; 23];
-            if let Ok(Ok(_)) = tokio::time::timeout(
-                std::time::Duration::from_millis(200),
-                stream.read_exact(&mut req),
-            )
-            .await
-            {
-                if req.starts_with(b"<policy-file-request") {
-                    log::info!("Serving socket policy file to {}", addr);
-                    let policy = r#"<?xml version="1.0"?><cross-domain-policy><allow-access-from domain="*" to-ports="1008-49151" /></cross-domain-policy>"#;
-                    let _ = stream.write_all(policy.as_bytes()).await;
-                    let _ = stream.write_all(&[0]).await;
-                    return Ok(());
-                }
-            }
-        }
-    }
-
     let version_bytes = Handshake::default().to_bytes();
     stream.write_all(&version_bytes).await?;
     log::debug!("Sent handshake to {}", addr);
@@ -288,7 +220,6 @@ async fn handle_client(
 
     let mut buffer = Vec::with_capacity(4096);
     let mut read_buf = [0u8; 4096];
-    let server_device_id = server_device_id.to_string();
 
     loop {
         tokio::select! {
@@ -306,11 +237,11 @@ async fn handle_client(
                             let full_packet: Vec<u8> = buffer[..4 + pkt_size].to_vec();
                             buffer.drain(..4 + pkt_size);
 
-                            let actions = {
+                            let output = {
                                 let mut engine = state.engine.lock().await;
                                 engine.process_incoming(&full_packet)
                             };
-                            route_actions(&state, &actions, client_id, &server_device_id).await;
+                            route_output(&state, &output, client_id).await;
                         }
                     }
                     Err(e) => { log::error!("Read error from {}: {}", addr, e); break; }
@@ -325,8 +256,8 @@ async fn handle_client(
         if let Some(client) = clients.remove(&client_id) {
             if let Some(dev_id) = &client.device_id {
                 state.device_to_client.write().await.remove(dev_id);
-                let disconnect_actions = state.engine.lock().await.drop_device(dev_id);
-                route_send_actions(&state, &disconnect_actions, &clients).await;
+                let disconnect_outgoings = state.engine.lock().await.drop_device(dev_id);
+                route_send_outgoings(&disconnect_outgoings, &clients).await;
                 if let Some(ref shared) = state.gui_shared {
                     shared.metrics_connections.lock().unwrap().remove(dev_id);
                     shared.pending_connections.lock().unwrap().remove(dev_id);
@@ -347,283 +278,165 @@ async fn handle_client(
     Ok(())
 }
 
-async fn route_send_actions(
-    _state: &Arc<ServerState>,
-    actions: &[Action],
-    clients: &HashMap<u64, Client>,
-) {
-    for action in actions {
-        if let Action::Send {
-            target_device_id,
-            payload,
-            ..
-        } = action
-        {
-            for (_, c) in clients.iter() {
-                if c.device_id.as_deref() == Some(target_device_id.as_str()) {
-                    let _ = c.tx.send(payload.clone()).await;
-                    break;
-                }
+async fn route_output(state: &Arc<ServerState>, output: &ProcessOutput, source_client_id: u64) {
+    for ev in &output.events {
+        match ev {
+            Event::PeerSeen { record } | Event::PeerConnected { record } => {
+                bind_device(state, source_client_id, record).await;
             }
-        }
-    }
-}
-
-async fn send_actions_to_client(client: &Client, actions: &[Action]) {
-    for a in actions {
-        if let Action::Send { payload, .. } = a {
-            let _ = client.tx.send(payload.clone()).await;
-        }
-    }
-}
-
-async fn route_actions(
-    state: &Arc<ServerState>,
-    actions: &[Action],
-    source_client_id: u64,
-    _server_device_id: &str,
-) {
-    for action in actions {
-        match action {
-            Action::Send {
-                target_device_id,
-                payload,
-                ..
-            } => {
-                let clients = state.clients.read().await;
-                let d2c = state.device_to_client.read().await;
-
-                if let Some(source) = clients.get(&source_client_id) {
-                    if source.device_id.as_deref() == Some(target_device_id.as_str()) {
-                        let _ = source.tx.send(payload.clone()).await;
-                        continue;
-                    }
-                }
-                if let Some(&target_cid) = d2c.get(target_device_id) {
-                    if let Some(target) = clients.get(&target_cid) {
-                        let _ = target.tx.send(payload.clone()).await;
-                    }
-                } else {
-                    for (cid, client) in clients.iter() {
-                        if *cid != source_client_id {
-                            let _ = client.tx.send(payload.clone()).await;
-                        }
-                    }
-                }
+            Event::PeerRegistered { info, domain, .. } => {
+                update_client_registry(state, info, domain.as_deref()).await;
             }
-
-            Action::UpdateRegistry { record } => {
-                let dev_id = record.core.device_id.clone();
-                let dev_name = record.core.device_name.clone();
-                let dev_type = record.core.device_type.code();
-
-                {
-                    let mut d2c = state.device_to_client.write().await;
-                    if let Some(&old_cid) = d2c.get(&dev_id) {
-                        if old_cid != source_client_id {
-                            log::info!(
-                                "Device {} re-registered: evicting stale client {} in favour of {}",
-                                dev_id,
-                                old_cid,
-                                source_client_id
-                            );
-                            let mut clients = state.clients.write().await;
-                            if let Some(old_client) = clients.remove(&old_cid) {
-                                let _ = old_client.tx.send(Vec::new()).await;
-                            }
-                        }
-                    }
-                    d2c.insert(dev_id.clone(), source_client_id);
-                }
-
-                let mut clients = state.clients.write().await;
-                if let Some(c) = clients.get_mut(&source_client_id) {
-                    c.device_id = Some(dev_id.clone());
-                    c.device_name = Some(dev_name.clone());
-                    c.device_type_code = Some(dev_type);
-                    if let Some(ref info) = record.info {
-                        c.app_id = Some(info.app_id.clone());
-                        c.slot_id = Some(info.slot_id);
-                        c.current_players = info.current_players;
-                        c.max_players = info.max_players;
-                    }
-                }
-                drop(clients);
-                log::info!(
-                    "Registry updated: {} ({}) type={}",
-                    dev_name,
-                    dev_id,
-                    dev_type
-                );
-                state.sync_clients_to_gui().await;
+            Event::HostUpdated { info } => {
+                update_client_registry(state, info, None).await;
             }
-
-            Action::RegistryEvent { kind, infos, .. } => match kind {
-                RegistryEventKind::OnRegister => {
-                    log::info!("Registry register: {} infos", infos.len());
-                    let engine = state.engine.lock().await;
-                    let d2c = state.device_to_client.read().await;
-                    let mut clients = state.clients.write().await;
-                    for info in infos {
-                        let did = &info.device.device_id;
-                        let latest = engine.registry().get(did).and_then(|r| r.info.as_ref());
-                        let src = latest.unwrap_or(info);
-                        if let Some(&cid) = d2c.get(did.as_str()) {
-                            if let Some(c) = clients.get_mut(&cid) {
-                                c.app_id = Some(src.app_id.clone());
-                                c.slot_id = Some(src.slot_id);
-                                c.current_players = src.current_players;
-                                c.max_players = src.max_players;
-                            }
-                        }
-                    }
-                    drop(clients);
-                    drop(d2c);
-                    drop(engine);
-                    state.sync_clients_to_gui().await;
-                }
-                RegistryEventKind::OnList => log::debug!("Registry list: {} infos", infos.len()),
-                RegistryEventKind::OnHostConnected | RegistryEventKind::OnHostUpdate => {
-                    log::info!("Host connected/update: {} infos", infos.len());
-                    let engine = state.engine.lock().await;
-                    let d2c = state.device_to_client.read().await;
-                    let mut clients = state.clients.write().await;
-                    for info in infos {
-                        let did = &info.device.device_id;
-                        let latest = engine.registry().get(did).and_then(|r| r.info.as_ref());
-                        let src = latest.unwrap_or(info);
-                        if let Some(&cid) = d2c.get(did.as_str()) {
-                            if let Some(c) = clients.get_mut(&cid) {
-                                c.app_id = Some(src.app_id.clone());
-                                c.slot_id = Some(src.slot_id);
-                                c.current_players = src.current_players;
-                                c.max_players = src.max_players;
-                            }
-                        }
-                    }
-                    drop(clients);
-                    drop(d2c);
-                    drop(engine);
-                    state.sync_clients_to_gui().await;
-                }
-                RegistryEventKind::OnHostDisconnected => {
-                    log::info!("Host disconnected");
-                    let disconnected_ids: Vec<String> =
-                        infos.iter().map(|i| i.device.device_id.clone()).collect();
-                    if !disconnected_ids.is_empty() {
-                        if let Some(ref shared) = state.gui_shared {
-                            let mut mc = shared.metrics_connections.lock().unwrap();
-                            for did in &disconnected_ids {
-                                mc.retain(|_, game_did| game_did != did);
-                            }
-                        }
-                        state.sync_clients_to_gui().await;
-                    }
-                }
-                RegistryEventKind::DeviceConnectRequested => {
-                    if let Some(host_info) = infos.first() {
-                        let clients = state.clients.read().await;
-                        let source_dev_id = clients
-                            .get(&source_client_id)
-                            .and_then(|c| c.device_id.clone());
-                        let source_name = clients
-                            .get(&source_client_id)
-                            .and_then(|c| c.device_name.as_deref())
-                            .unwrap_or("?");
-                        let game_device_id = &host_info.device.device_id;
-                        log::info!(
-                            "Device connect requested: {} -> {}",
-                            source_name,
-                            game_device_id
-                        );
-                        if let Some(ctrl_did) = source_dev_id {
-                            if let Some(shared) = &state.gui_shared {
-                                shared
-                                    .pending_connections
-                                    .lock()
-                                    .unwrap()
-                                    .insert(ctrl_did, game_device_id.clone());
-                            }
-                        }
-                    }
-                }
-            },
-
-            Action::Invoke { method, params, .. } => {
-                if method == "registry.register" {
-                    let domain = params.iter().find_map(|p| {
-                        if let Value::String(s) = p {
-                            Some(s.clone())
-                        } else {
-                            None
-                        }
-                    });
-                    if domain.is_some() {
-                        let mut clients = state.clients.write().await;
-                        if let Some(c) = clients.get_mut(&source_client_id) {
-                            c.domain = domain;
-                        }
-                        drop(clients);
-                        state.sync_clients_to_gui().await;
-                    }
-                }
-                handle_invoke(state, source_client_id, method, params).await;
+            Event::DeviceConnectRequested { info } => {
+                record_pending_connection(state, source_client_id, info).await;
             }
-
+            Event::Invoke { method, .. } => {
+                log::debug!("Unhandled invoke from client {}: {}", source_client_id, method);
+            }
             _ => {}
         }
     }
+
+    let routes: Vec<(u64, Vec<u8>)> = {
+        let d2c = state.device_to_client.read().await;
+        output
+            .outgoings
+            .iter()
+            .filter_map(|o| d2c.get(&o.target_device_id).map(|&cid| (cid, o.payload.clone())))
+            .collect()
+    };
+    if routes.is_empty() {
+        return;
+    }
+    let clients = state.clients.read().await;
+    for (cid, payload) in routes {
+        if let Some(c) = clients.get(&cid) {
+            let _ = c.tx.send(payload).await;
+        }
+    }
 }
 
-async fn handle_invoke(
-    state: &Arc<ServerState>,
-    source_client_id: u64,
-    method: &str,
-    _params: &[Value],
-) {
-    match method {
-        "registry.register" => {
-            let clients = state.clients.read().await;
-            let info = clients
-                .get(&source_client_id)
-                .map(|c| {
-                    format!(
-                        "{} ({}) type={}",
-                        c.device_name.as_deref().unwrap_or("?"),
-                        c.device_id.as_deref().unwrap_or("?"),
-                        c.device_type_code.unwrap_or(0)
-                    )
-                })
-                .unwrap_or_default();
-            log::info!("registry.register: {}", info);
-        }
-
-        "registry.list" => {
-            log::debug!("registry.list from client {}", source_client_id);
-        }
-
-        "ping" => {
-            let dev_id = {
-                let clients = state.clients.read().await;
-                clients
-                    .get(&source_client_id)
-                    .and_then(|c| c.device_id.clone())
-            };
-            if let Some(did) = dev_id {
-                let mut engine = state.engine.lock().await;
-                use bronze_monkey::types::packet_type::PacketType;
-                let acts = engine.make_packet(&did, 1, Some(0), PacketType::Echo, None);
-                let clients = state.clients.read().await;
-                if let Some(c) = clients.get(&source_client_id) {
-                    send_actions_to_client(c, &acts).await;
-                }
+async fn route_send_outgoings(outgoings: &[Outgoing], clients: &HashMap<u64, Client>) {
+    for o in outgoings {
+        for (_, c) in clients.iter() {
+            if c.device_id.as_deref() == Some(o.target_device_id.as_str()) {
+                let _ = c.tx.send(o.payload.clone()).await;
+                break;
             }
         }
+    }
+}
 
-        "registry.relay" | "registry.update" => {
-            log::debug!("{} from client {}", method, source_client_id);
+async fn bind_device(state: &Arc<ServerState>, source_client_id: u64, record: &DeviceRecord) {
+    let dev_id = record.core.device_id.clone();
+    if dev_id.is_empty() {
+        return;
+    }
+
+    {
+        let clients = state.clients.read().await;
+        if clients
+            .get(&source_client_id)
+            .and_then(|c| c.device_id.as_deref())
+            == Some(dev_id.as_str())
+        {
+            return;
         }
+    }
 
-        _ => log::debug!("Unhandled invoke: {}", method),
+    let stale = {
+        let mut d2c = state.device_to_client.write().await;
+        d2c.insert(dev_id.clone(), source_client_id)
+            .filter(|&old| old != source_client_id)
+    };
+    if let Some(old_cid) = stale {
+        let mut clients = state.clients.write().await;
+        if let Some(old) = clients.remove(&old_cid) {
+            let _ = old.tx.send(Vec::new()).await;
+        }
+        log::info!(
+            "Device {} re-registered: evicting stale client {} in favour of {}",
+            dev_id,
+            old_cid,
+            source_client_id
+        );
+    }
+
+    {
+        let mut clients = state.clients.write().await;
+        if let Some(c) = clients.get_mut(&source_client_id) {
+            c.device_id = Some(dev_id.clone());
+            c.device_name = Some(record.core.device_name.clone());
+            c.device_type_code = Some(record.core.device_type.code());
+        }
+    }
+    log::info!(
+        "Registry updated: {} ({}) type={}",
+        record.core.device_name,
+        dev_id,
+        record.core.device_type.code()
+    );
+    state.sync_clients_to_gui().await;
+}
+
+async fn update_client_registry(
+    state: &Arc<ServerState>,
+    info: &BMRegistryInfo,
+    domain: Option<&str>,
+) {
+    let cid = state
+        .device_to_client
+        .read()
+        .await
+        .get(&info.device.device_id)
+        .copied();
+    let Some(cid) = cid else {
+        return;
+    };
+    {
+        let mut clients = state.clients.write().await;
+        if let Some(c) = clients.get_mut(&cid) {
+            c.app_id = Some(info.app_id.clone());
+            c.slot_id = Some(info.slot_id);
+            c.current_players = info.current_players;
+            c.max_players = info.max_players;
+            if let Some(d) = domain {
+                c.domain = Some(d.to_string());
+            }
+        }
+    }
+    state.sync_clients_to_gui().await;
+}
+
+async fn record_pending_connection(
+    state: &Arc<ServerState>,
+    source_client_id: u64,
+    info: &BMRegistryInfo,
+) {
+    let game_device_id = info.device.device_id.clone();
+    let (source_dev, source_name) = {
+        let clients = state.clients.read().await;
+        let c = clients.get(&source_client_id);
+        (
+            c.and_then(|c| c.device_id.clone()),
+            c.and_then(|c| c.device_name.clone()).unwrap_or_default(),
+        )
+    };
+    log::info!(
+        "Device connect requested: {} -> {}",
+        source_name,
+        game_device_id
+    );
+    if let Some(ctrl_did) = source_dev {
+        if let Some(shared) = &state.gui_shared {
+            shared
+                .pending_connections
+                .lock()
+                .unwrap()
+                .insert(ctrl_did, game_device_id);
+        }
     }
 }
