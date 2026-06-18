@@ -19,6 +19,8 @@ use crate::shared_state::{ConnectedClient, SharedState};
 
 const CROSS_DOMAIN_POLICY: &str = r#"<?xml version="1.0"?><cross-domain-policy><allow-access-from domain="*" to-ports="1008-49151" /></cross-domain-policy>"#;
 
+const CONTROLLER_POLICY_PORT: u16 = 9010;
+
 struct Client {
     device_id: Option<String>,
     device_name: Option<String>,
@@ -112,12 +114,42 @@ impl Server {
         self.shutdown_tx.clone()
     }
 
+    fn spawn_controller_policy_listener(&self) {
+        let host = self.config.server_host.clone();
+        let mut shutdown_rx = self.shutdown_tx.subscribe();
+        tokio::spawn(async move {
+            let addr = format!("{}:{}", host, CONTROLLER_POLICY_PORT);
+            let listener = match TcpListener::bind(&addr).await {
+                Ok(l) => {
+                    log::info!("Controller policy server listening on {}", addr);
+                    l
+                }
+                Err(e) => {
+                    log::warn!("Could not bind controller policy port {}: {}", addr, e);
+                    return;
+                }
+            };
+            loop {
+                tokio::select! {
+                    accepted = listener.accept() => {
+                        if let Ok((stream, peer)) = accepted {
+                            tokio::spawn(serve_policy(stream, peer));
+                        }
+                    }
+                    _ = shutdown_rx.recv() => break,
+                }
+            }
+        });
+    }
+
     pub async fn run(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let addr = format!("{}:{}", self.config.server_host, self.config.server_port);
         let listener = TcpListener::bind(&addr).await?;
         log::info!("Server listening on {}", addr);
 
         let mut shutdown_rx = self.shutdown_tx.subscribe();
+
+        self.spawn_controller_policy_listener();
 
         loop {
             tokio::select! {
@@ -156,6 +188,16 @@ impl Server {
 
         Ok(())
     }
+}
+
+async fn serve_policy(mut stream: TcpStream, peer: std::net::SocketAddr) {
+    let mut buf = [0u8; 64];
+    let _ =
+        tokio::time::timeout(std::time::Duration::from_millis(500), stream.read(&mut buf)).await;
+    log::info!("Serving socket policy file to {}", peer);
+    let _ = stream.write_all(CROSS_DOMAIN_POLICY.as_bytes()).await;
+    let _ = stream.write_all(&[0]).await;
+    let _ = stream.flush().await;
 }
 
 async fn handle_client(

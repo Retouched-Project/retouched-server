@@ -207,14 +207,14 @@ Item {
             Label {
                 text: "No supported firewall manager detected. Open ports manually."
                 color: "#ffc800"
-                visible: backend.firewall_backend === "None"
+                visible: backend.firewall_backend === "none"
                 Layout.leftMargin: 8
             }
 
             RowLayout {
                 Layout.leftMargin: 8
                 spacing: 8
-                visible: backend.firewall_backend !== "None" && backend.firewall_backend !== ""
+                visible: backend.firewall_backend !== "none" && backend.firewall_backend !== ""
 
                 Button {
                     text: "Open ports"

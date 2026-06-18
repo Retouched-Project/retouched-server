@@ -25,7 +25,7 @@ Windows:
 
 Linux:
 - The appimage is recommended. Glibc 2.39+ is required (musl is unsupported -> use a compat layer).
-- The tarball might work on distros with Qt older than 6.10.3 (Qt 6.3 or higher required) but this hasn't been tested.
+- Qt 6.3 or higher required.
 
 macOS:
 - Open the dmg and drag the icon into the Applications folder.
