@@ -5,6 +5,7 @@
 #include "tray_manager.h"
 #include <QApplication>
 #include <QIcon>
+#include <QMessageBox>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
@@ -93,4 +94,25 @@ extern "C" int runQtApp(const char *appName, const char *appVersion) {
   int result = app.exec();
   delete engine;
   return result;
+}
+
+extern "C" void showAlreadyRunningDialog() {
+  static int argc = 1;
+  static char arg0[] = "retouched-server";
+  static char *argv[] = {arg0, nullptr};
+
+  QApplication app(argc, argv);
+  app.setWindowIcon(QIcon(":/assets/retouched_logo_icons.png"));
+
+  QMessageBox box;
+  box.setIcon(QMessageBox::Warning);
+  box.setWindowTitle("Retouched Server");
+  box.setText("Retouched Server is already running.");
+  box.setInformativeText(
+      "Only one instance can run at a time.\n\n"
+      "If you cannot find or close the existing window, the process may have "
+      "hung. End it from your system's task manager (Activity Monitor on "
+      "macOS), or reboot, then try again.");
+  box.setStandardButtons(QMessageBox::Ok);
+  box.exec();
 }

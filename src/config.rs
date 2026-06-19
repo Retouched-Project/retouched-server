@@ -30,6 +30,8 @@ pub struct Config {
     pub webrtc_port: u16,
     #[serde(default)]
     pub custom_web_dir: Option<String>,
+    #[serde(default)]
+    pub allow_multiple_instances: bool,
 }
 
 fn default_host() -> String {
@@ -75,6 +77,7 @@ impl Default for Config {
             verbose_logging: false,
             webrtc_port: default_webrtc_port(),
             custom_web_dir: None,
+            allow_multiple_instances: false,
         }
     }
 }

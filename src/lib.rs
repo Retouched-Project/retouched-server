@@ -22,6 +22,7 @@ pub mod path_util;
 pub mod server;
 pub mod setup;
 pub mod shared_state;
+pub mod single_instance;
 pub mod touchy_patcher;
 pub mod web_app_server;
 pub mod web_manager;

@@ -4,3 +4,4 @@
 #pragma once
 
 extern "C" int runQtApp(const char *appName, const char *appVersion);
+extern "C" void showAlreadyRunningDialog();

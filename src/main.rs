@@ -36,6 +36,9 @@ struct Cli {
     #[arg(long)]
     data_dir: Option<PathBuf>,
 
+    #[arg(long)]
+    allow_multiple_instances: bool,
+
     #[cfg(feature = "gui")]
     #[arg(long)]
     headless: bool,
@@ -141,6 +144,19 @@ fn default_config_path() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("config.json"))
 }
 
+fn acquire_instance_lock(
+    allow_multiple: bool,
+) -> Result<retouched_server::single_instance::InstanceLock, ()> {
+    use retouched_server::single_instance::{InstanceLock, acquire};
+    if allow_multiple {
+        return Ok(InstanceLock::Unenforced);
+    }
+    match acquire() {
+        InstanceLock::AlreadyRunning => Err(()),
+        other => Ok(other),
+    }
+}
+
 fn main() {
     rustls::crypto::ring::default_provider()
         .install_default()
@@ -190,6 +206,16 @@ fn run_gui(cli: Cli) {
     let effective_log_level = cli.log_level.as_deref().unwrap_or(&config.log_level);
     let log_level = parse_log_level(effective_log_level, cli.debug);
     gui_logger::GuiLogger::init(shared.clone(), log_level);
+
+    let _instance = match acquire_instance_lock(
+        config.allow_multiple_instances || cli.allow_multiple_instances,
+    ) {
+        Ok(lock) => lock,
+        Err(()) => {
+            gui::show_already_running();
+            std::process::exit(1);
+        }
+    };
 
     let data_dir = cli.data_dir.clone();
 
@@ -254,6 +280,18 @@ async fn run_headless(cli: Cli) -> Result<(), Box<dyn std::error::Error + Send +
         Err(e) => {
             eprintln!("Failed to load config ({}), using defaults", e);
             Config::default()
+        }
+    };
+
+    let _instance = match acquire_instance_lock(
+        config.allow_multiple_instances || cli.allow_multiple_instances,
+    ) {
+        Ok(lock) => lock,
+        Err(()) => {
+            eprintln!(
+                "Retouched Server is already running. Set allow_multiple_instances in the config or pass --allow-multiple-instances to override."
+            );
+            std::process::exit(1);
         }
     };
 
@@ -605,7 +643,11 @@ fn cli_redirect(action: RedirectAction, config: &Option<PathBuf>) {
         .unwrap_or(8088);
     match action {
         RedirectAction::Status => {
-            println!("Redirect backend: {} (843 -> {})", backend.name(), target_port)
+            println!(
+                "Redirect backend: {} (843 -> {})",
+                backend.name(),
+                target_port
+            )
         }
         RedirectAction::Apply => match apply(&backend, target_port) {
             Ok(()) => println!("Policy port redirect applied (843 -> {}).", target_port),

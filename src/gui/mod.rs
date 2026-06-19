@@ -17,6 +17,11 @@ use server_backend::{BACKEND_INIT, BackendInit};
 
 unsafe extern "C" {
     fn runQtApp(app_name: *const std::ffi::c_char, app_version: *const std::ffi::c_char) -> i32;
+    fn showAlreadyRunningDialog();
+}
+
+pub fn show_already_running() {
+    unsafe { showAlreadyRunningDialog() };
 }
 
 #[unsafe(no_mangle)]
