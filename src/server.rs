@@ -11,6 +11,7 @@ use bronze_monkey::codec::externals::bm_registry_info::BMRegistryInfo;
 use bronze_monkey::codec::externals::handshake::Handshake;
 use bronze_monkey::devices::bm_address::BMAddress;
 use bronze_monkey::devices::device_core::DeviceCore;
+use bronze_monkey::engine::methods::DEVICE_CONNECT_REQUESTED;
 use bronze_monkey::engine::{DeviceRecord, Engine, Event, Outgoing, ProcessOutput};
 use bronze_monkey::types::device_type::DeviceType;
 
@@ -360,8 +361,12 @@ async fn route_output(state: &Arc<ServerState>, output: &ProcessOutput, source_c
             Event::HostUpdated { info } => {
                 update_client_registry(state, info, None).await;
             }
-            Event::DeviceConnectRequested { info } => {
-                record_pending_connection(state, source_client_id, info).await;
+            Event::Relayed {
+                destination,
+                method,
+                ..
+            } if method.as_str() == DEVICE_CONNECT_REQUESTED => {
+                record_pending_connection(state, source_client_id, destination).await;
             }
             Event::Invoke { method, .. } => {
                 log::debug!(
@@ -491,9 +496,9 @@ async fn update_client_registry(
 async fn record_pending_connection(
     state: &Arc<ServerState>,
     source_client_id: u64,
-    info: &BMRegistryInfo,
+    game_device_id: &str,
 ) {
-    let game_device_id = info.device.device_id.clone();
+    let game_device_id = game_device_id.to_string();
     let (source_dev, source_name) = {
         let clients = state.clients.read().await;
         let c = clients.get(&source_client_id);
