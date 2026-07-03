@@ -3,6 +3,35 @@
 
 use core::pin::Pin;
 use cxx_qt_lib::QString;
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+
+// cached policy redirect status: 0 unknown, 1 active, 2 inactive
+static POLICY_STATUS: AtomicU8 = AtomicU8::new(0);
+static POLICY_PROBING: AtomicBool = AtomicBool::new(false);
+
+fn server_running() -> bool {
+    crate::gui::server_backend::BACKEND_INIT
+        .get()
+        .map(|init| init.shared.server_status() == crate::shared_state::ServerStatus::Running)
+        .unwrap_or(false)
+}
+
+// probe off-thread on demand - the probe touches the server so it is not run on a timer
+fn spawn_policy_probe() {
+    if POLICY_PROBING.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    let target = redirect_target_port();
+    std::thread::spawn(move || {
+        let code = match crate::setup::port_redirect::probe_status(target) {
+            crate::setup::port_redirect::RedirectStatus::Active => 1,
+            crate::setup::port_redirect::RedirectStatus::Inactive => 2,
+            crate::setup::port_redirect::RedirectStatus::Unknown => 0,
+        };
+        POLICY_STATUS.store(code, Ordering::Relaxed);
+        POLICY_PROBING.store(false, Ordering::Release);
+    });
+}
 
 pub struct SettingsBackendRust {
     trust_entries_json: QString,
@@ -11,6 +40,7 @@ pub struct SettingsBackendRust {
     hosts_status_json: QString,
     firewall_backend: QString,
     redirect_backend: QString,
+    policy_redirect_status: QString,
 }
 
 impl Default for SettingsBackendRust {
@@ -22,6 +52,7 @@ impl Default for SettingsBackendRust {
             hosts_status_json: QString::from("[]"),
             firewall_backend: QString::from(""),
             redirect_backend: QString::from(""),
+            policy_redirect_status: QString::from("unknown"),
         }
     }
 }
@@ -42,6 +73,7 @@ pub mod qobject {
         #[qproperty(QString, hosts_status_json)]
         #[qproperty(QString, firewall_backend)]
         #[qproperty(QString, redirect_backend)]
+        #[qproperty(QString, policy_redirect_status)]
         type SettingsBackend = super::SettingsBackendRust;
 
         #[qinvokable]
@@ -111,7 +143,21 @@ impl qobject::SettingsBackend {
             .set_firewall_backend(QString::from(backend.name()));
 
         let redirect = crate::setup::port_redirect::detect_backend();
-        self.set_redirect_backend(QString::from(redirect.name()));
+        self.as_mut()
+            .set_redirect_backend(QString::from(redirect.name()));
+
+        // an unknown status resolves once the server is running, enabling while
+        // the server is stopped leaves it unknown until then
+        if server_running() && POLICY_STATUS.load(Ordering::Relaxed) == 0 {
+            spawn_policy_probe();
+        }
+
+        let status = match POLICY_STATUS.load(Ordering::Relaxed) {
+            1 => "active",
+            2 => "inactive",
+            _ => "unknown",
+        };
+        self.set_policy_redirect_status(QString::from(status));
     }
 
     fn add_trust_dir(self: Pin<&mut Self>) {
@@ -192,6 +238,12 @@ impl qobject::SettingsBackend {
             Ok(()) => log::info!("Policy port redirect applied (843 -> {})", port),
             Err(e) => log::error!("Failed to apply policy redirect: {}", e),
         }
+        // probe now if the server is up, otherwise show unknown until it starts
+        if server_running() {
+            spawn_policy_probe();
+        } else {
+            POLICY_STATUS.store(0, Ordering::Relaxed);
+        }
     }
 
     fn remove_policy_redirect(&self) {
@@ -201,6 +253,8 @@ impl qobject::SettingsBackend {
             Ok(()) => log::info!("Policy port redirect removed"),
             Err(e) => log::error!("Failed to remove policy redirect: {}", e),
         }
+        // disabling makes it inactive, force the status instead of probing again
+        POLICY_STATUS.store(2, Ordering::Relaxed);
     }
 }
 

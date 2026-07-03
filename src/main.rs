@@ -508,6 +508,12 @@ async fn run_headless(cli: Cli) -> Result<(), Box<dyn std::error::Error + Send +
         None
     };
 
+    // warn off-thread if the 843 redirect is not active
+    let policy_target_port = config.server_port;
+    std::thread::spawn(move || {
+        setup::port_redirect::warn_if_inactive(policy_target_port);
+    });
+
     let server = Server::new(config);
     let shutdown_tx = server.shutdown_handle();
 
@@ -655,7 +661,7 @@ fn cli_trust(action: TrustAction) {
 }
 
 fn cli_redirect(action: RedirectAction, config: &Option<PathBuf>) {
-    use setup::port_redirect::{apply, detect_backend, remove};
+    use setup::port_redirect::{RedirectStatus, apply, detect_backend, probe_status, remove};
     let backend = detect_backend();
     let config_path = config.clone().unwrap_or_else(default_config_path);
     let target_port = Config::from_file(&config_path)
@@ -667,7 +673,13 @@ fn cli_redirect(action: RedirectAction, config: &Option<PathBuf>) {
                 "Redirect backend: {} (843 -> {})",
                 backend.name(),
                 target_port
-            )
+            );
+            let status = match probe_status(target_port) {
+                RedirectStatus::Active => "active",
+                RedirectStatus::Inactive => "not active (Unity Web Player games will not connect)",
+                RedirectStatus::Unknown => "unknown (is the server running?)",
+            };
+            println!("Redirect status: {}", status);
         }
         RedirectAction::Apply => match apply(&backend, target_port) {
             Ok(()) => println!("Policy port redirect applied (843 -> {}).", target_port),

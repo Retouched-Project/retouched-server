@@ -255,6 +255,33 @@ Item {
                 visible: backend.redirect_backend !== "" && backend.redirect_backend !== "none"
             }
 
+            Label {
+                Layout.leftMargin: 8
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                visible: backend.redirect_backend !== "" && backend.redirect_backend !== "none"
+                text: {
+                    switch (backend.policy_redirect_status) {
+                    case "active":
+                        return "Status: active";
+                    case "inactive":
+                        return "Status: not active - Unity Web Player games will not connect";
+                    default:
+                        return "Status: unknown (start the server to verify)";
+                    }
+                }
+                color: {
+                    switch (backend.policy_redirect_status) {
+                    case "active":
+                        return "#00c800";
+                    case "inactive":
+                        return "#ff5050";
+                    default:
+                        return palette.text;
+                    }
+                }
+            }
+
             RowLayout {
                 Layout.leftMargin: 8
                 spacing: 8

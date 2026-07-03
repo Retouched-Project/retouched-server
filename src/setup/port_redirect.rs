@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 ddavef/KinteLiX retouched-server
 
+use std::io::{Read, Write};
+use std::net::{Ipv4Addr, SocketAddr, TcpStream};
 use std::process::Command;
+use std::time::Duration;
 
 pub const POLICY_PORT: u16 = 843;
 
@@ -34,6 +37,63 @@ pub fn detect_backend() -> RedirectBackend {
     #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     {
         RedirectBackend::None
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RedirectStatus {
+    Active,
+    Inactive,
+    Unknown,
+}
+
+// send a policy request so the server serves the policy and closes cleanly
+fn serves_policy(port: u16) -> bool {
+    let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
+    let Ok(mut stream) = TcpStream::connect_timeout(&addr, Duration::from_millis(300)) else {
+        return false;
+    };
+    let _ = stream.set_write_timeout(Some(Duration::from_millis(300)));
+    let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
+    if stream.write_all(b"<policy-file-request/>\0").is_err() {
+        return false;
+    }
+    let mut buf = [0u8; 8];
+    matches!(stream.read(&mut buf), Ok(n) if n > 0 && buf[0] == b'<')
+}
+
+// 843 serving policy means the redirect is live,
+// only the server port serving means it is missing
+pub fn probe_status(target_port: u16) -> RedirectStatus {
+    crate::server::set_policy_probe_active(true);
+    let status = if serves_policy(POLICY_PORT) {
+        RedirectStatus::Active
+    } else if serves_policy(target_port) {
+        RedirectStatus::Inactive
+    } else {
+        RedirectStatus::Unknown
+    };
+    crate::server::set_policy_probe_active(false);
+    status
+}
+
+// no-op where there is no redirect backend, e.g. Windows binds 843 directly
+pub fn warn_if_inactive(target_port: u16) {
+    if matches!(detect_backend(), RedirectBackend::None) {
+        return;
+    }
+    for _ in 0..10 {
+        match probe_status(target_port) {
+            RedirectStatus::Active => return,
+            RedirectStatus::Inactive => {
+                log::warn!(
+                    "Port 843 redirect not active: Unity Web Player games will not connect. \
+                     Enable the policy port redirect in Settings, or run 'retouched-server redirect apply'."
+                );
+                return;
+            }
+            RedirectStatus::Unknown => std::thread::sleep(Duration::from_millis(500)),
+        }
     }
 }
 

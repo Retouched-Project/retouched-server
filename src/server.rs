@@ -3,6 +3,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Mutex, RwLock, broadcast};
@@ -21,6 +22,13 @@ use crate::shared_state::{ConnectedClient, SharedState};
 const CROSS_DOMAIN_POLICY: &str = r#"<?xml version="1.0"?><cross-domain-policy><allow-access-from domain="*" to-ports="1008-49151" /></cross-domain-policy>"#;
 
 const CONTROLLER_POLICY_PORT: u16 = 9010;
+
+// set by the redirect probe so its own loopback policy fetch is not logged
+static POLICY_PROBE_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+pub fn set_policy_probe_active(active: bool) {
+    POLICY_PROBE_ACTIVE.store(active, Ordering::Relaxed);
+}
 
 struct Client {
     device_id: Option<String>,
@@ -158,7 +166,9 @@ impl Server {
                     match result {
                         Ok((stream, addr)) => {
                             let _ = stream.set_nodelay(true);
-                            log::info!("New connection from {}", addr);
+                            if !(POLICY_PROBE_ACTIVE.load(Ordering::Relaxed) && addr.ip().is_loopback()) {
+                                log::info!("New connection from {}", addr);
+                            }
                             let state = self.state.clone();
                             let max_packet = self.config.max_packet_size;
                             let mut shutdown_rx2 = self.shutdown_tx.subscribe();
@@ -224,7 +234,9 @@ async fn handle_client(
             .await
             {
                 if req.starts_with(b"<policy-file-request") {
-                    log::info!("Serving socket policy file to {}", addr);
+                    if !(POLICY_PROBE_ACTIVE.load(Ordering::Relaxed) && addr.ip().is_loopback()) {
+                        log::info!("Serving socket policy file to {}", addr);
+                    }
                     let _ = stream.write_all(CROSS_DOMAIN_POLICY.as_bytes()).await;
                     let _ = stream.write_all(&[0]).await;
                     return Ok(());
