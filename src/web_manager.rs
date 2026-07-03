@@ -5,10 +5,44 @@ use std::path::{Path, PathBuf};
 
 pub const RETOUCHED_WEB_RELEASES_URL: &str = "https://github.com/Retouched-Project/retouched_web/releases/latest/download/retouched_web_release.zip";
 
+pub const RETOUCHED_WEB_VERSION_URL: &str =
+    "https://github.com/Retouched-Project/retouched_web/releases/latest/download/version.json";
+
+pub const VERSION_FILE_NAME: &str = "version.json";
+
 pub const WEB_APP_DIR_NAME: &str = "retouched_web";
 
 pub fn web_app_dir(data_dir: &Path) -> PathBuf {
     data_dir.join(WEB_APP_DIR_NAME)
+}
+
+fn parse_version(json: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(json).ok()?;
+    value
+        .get("version")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+}
+
+pub fn read_installed_version(web_root: &Path) -> Option<String> {
+    let content = std::fs::read_to_string(web_root.join(VERSION_FILE_NAME)).ok()?;
+    parse_version(&content)
+}
+
+pub fn fetch_latest_version() -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    let client = reqwest::blocking::Client::builder()
+        .user_agent("retouched-server")
+        .timeout(std::time::Duration::from_secs(10))
+        .build()?;
+
+    let body = client
+        .get(RETOUCHED_WEB_VERSION_URL)
+        .send()?
+        .error_for_status()?
+        .text()?;
+
+    parse_version(&body).ok_or_else(|| "version.json missing version".into())
 }
 
 pub fn download_web_app(dir: &Path) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
@@ -39,7 +73,8 @@ pub fn download_web_app(dir: &Path) -> Result<String, Box<dyn std::error::Error 
         if dir.parent().is_none() {
             return Err("Refusing to delete a root-level directory".into());
         }
-        let dominated = std::fs::read_dir(dir)?.count() == 0 || dir.join("dist").join("index.html").exists();
+        let dominated =
+            std::fs::read_dir(dir)?.count() == 0 || dir.join("dist").join("index.html").exists();
         if !dominated {
             return Err(format!(
                 "Refusing to delete '{}': does not look like a retouched_web directory",
@@ -74,5 +109,11 @@ pub fn download_web_app(dir: &Path) -> Result<String, Box<dyn std::error::Error 
     }
 
     log::info!("Extracted retouched_web to {}", dir.display());
-    Ok("latest".to_string())
+
+    let web_root = if dir.join("dist").exists() {
+        dir.join("dist")
+    } else {
+        dir.to_path_buf()
+    };
+    Ok(read_installed_version(&web_root).unwrap_or_default())
 }

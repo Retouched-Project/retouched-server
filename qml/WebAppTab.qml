@@ -217,6 +217,13 @@ Item {
             }
 
             Label {
+                Layout.leftMargin: 8
+                visible: backend.custom_web_dir === "" && backend.web_app_version !== "" && backend.latest_version !== ""
+                text: backend.update_available ? ("Update available: " + backend.latest_version) : "Up to date"
+                color: backend.update_available ? "#ffc800" : "#00c800"
+            }
+
+            Label {
                 text: backend.web_app_error
                 color: "#ff5050"
                 visible: backend.web_app_error !== ""
@@ -232,7 +239,14 @@ Item {
                 Button {
                     text: (backend.web_app_status === "Not found" || backend.web_app_status === "Error") ? "Download Retouched Web" : "Update Retouched Web"
                     enabled: backend.web_app_status !== "Downloading..." && backend.web_app_status !== "Running"
+                    highlighted: backend.update_available
                     onClicked: backend.download_release()
+                }
+
+                Button {
+                    text: "Check for Updates"
+                    enabled: backend.web_app_status !== "Downloading..."
+                    onClicked: backend.check_for_updates()
                 }
 
                 BusyIndicator {

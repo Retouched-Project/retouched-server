@@ -40,6 +40,9 @@ struct WebAppInternalState {
     web_app_handle: Option<axum_server::Handle>,
 
     current_version: Arc<Mutex<Option<String>>>,
+    latest_version: Arc<Mutex<Option<String>>>,
+    update_available: Arc<Mutex<bool>>,
+    update_checked_once: bool,
     custom_web_dir: String,
     data_dir: PathBuf,
     http_port: u16,
@@ -74,6 +77,9 @@ static WEB_STATE: LazyLock<Mutex<WebAppInternalState>> = LazyLock::new(|| {
         web_app_error: Arc::new(Mutex::new(String::new())),
         web_app_handle: None,
         current_version: Arc::new(Mutex::new(None)),
+        latest_version: Arc::new(Mutex::new(None)),
+        update_available: Arc::new(Mutex::new(false)),
+        update_checked_once: false,
         custom_web_dir: String::new(),
         data_dir: PathBuf::new(),
         http_port: 8080,
@@ -104,8 +110,36 @@ fn ensure_initialized(state: &mut WebAppInternalState) {
         if effective_dir.join("index.html").exists() {
             *state.web_app_status.lock().unwrap() = WebAppStatus::Stopped;
         }
+
+        let web_root = state.effective_web_dir();
+        if let Some(v) = crate::web_manager::read_installed_version(&web_root) {
+            *state.current_version.lock().unwrap() = Some(v);
+        }
+
         state.initialized = true;
     }
+}
+
+fn spawn_update_check(
+    current: Arc<Mutex<Option<String>>>,
+    latest: Arc<Mutex<Option<String>>>,
+    update_available: Arc<Mutex<bool>>,
+) {
+    std::thread::spawn(move || match crate::web_manager::fetch_latest_version() {
+        Ok(tag) => {
+            let installed = current.lock().unwrap().clone();
+            let avail = matches!(&installed, Some(v) if !v.is_empty() && *v != tag);
+            *latest.lock().unwrap() = Some(tag.clone());
+            *update_available.lock().unwrap() = avail;
+            log::info!(
+                "[UPDATE] retouched_web latest={}, installed={:?}, update_available={}",
+                tag,
+                installed,
+                avail
+            );
+        }
+        Err(e) => log::warn!("[UPDATE] retouched_web update check failed: {}", e),
+    });
 }
 
 fn path_to_file_url(path: &std::path::Path) -> String {
@@ -132,6 +166,8 @@ pub struct WebAppBackendRust {
     bridge_error: QString,
     web_app_status: QString,
     web_app_version: QString,
+    latest_version: QString,
+    update_available: bool,
     web_url: QString,
     onboard_url: QString,
     custom_web_dir: QString,
@@ -151,6 +187,8 @@ impl Default for WebAppBackendRust {
             bridge_error: QString::from(""),
             web_app_status: QString::from("Not found"),
             web_app_version: QString::from(""),
+            latest_version: QString::from(""),
+            update_available: false,
             web_url: QString::from(""),
             onboard_url: QString::from(""),
             custom_web_dir: QString::from(""),
@@ -179,6 +217,8 @@ pub mod qobject {
         #[qproperty(QString, bridge_error)]
         #[qproperty(QString, web_app_status)]
         #[qproperty(QString, web_app_version)]
+        #[qproperty(QString, latest_version)]
+        #[qproperty(bool, update_available)]
         #[qproperty(QString, web_url)]
         #[qproperty(QString, onboard_url)]
         #[qproperty(QString, custom_web_dir)]
@@ -208,6 +248,9 @@ pub mod qobject {
         fn download_release(self: Pin<&mut WebAppBackend>);
 
         #[qinvokable]
+        fn check_for_updates(self: Pin<&mut WebAppBackend>);
+
+        #[qinvokable]
         fn set_custom_dir(self: Pin<&mut WebAppBackend>, dir: QString);
 
         #[qinvokable]
@@ -228,6 +271,15 @@ impl qobject::WebAppBackend {
     fn refresh(mut self: Pin<&mut Self>) {
         let mut state = WEB_STATE.lock().unwrap();
         ensure_initialized(&mut state);
+
+        if state.initialized && !state.update_checked_once && state.custom_web_dir.is_empty() {
+            state.update_checked_once = true;
+            spawn_update_check(
+                state.current_version.clone(),
+                state.latest_version.clone(),
+                state.update_available.clone(),
+            );
+        }
 
         let bridge_st = *state.bridge_status.lock().unwrap();
         let bridge_str = match bridge_st {
@@ -271,6 +323,17 @@ impl qobject::WebAppBackend {
             .clone()
             .unwrap_or_default();
         self.as_mut().set_web_app_version(QString::from(&ver));
+
+        let latest_ver = state
+            .latest_version
+            .lock()
+            .unwrap()
+            .clone()
+            .unwrap_or_default();
+        self.as_mut().set_latest_version(QString::from(&latest_ver));
+
+        let update_available = *state.update_available.lock().unwrap();
+        self.as_mut().set_update_available(update_available);
 
         let has_pkg = state.effective_web_dir().join("index.html").exists();
         self.as_mut().set_has_package_json(has_pkg);
@@ -465,12 +528,16 @@ impl qobject::WebAppBackend {
         let status = state.web_app_status.clone();
         let error = state.web_app_error.clone();
         let version = state.current_version.clone();
+        let latest = state.latest_version.clone();
+        let update_available = state.update_available.clone();
 
         std::thread::spawn(move || {
             let target = crate::web_manager::web_app_dir(&data_dir);
             match crate::web_manager::download_web_app(&target) {
                 Ok(ver) => {
-                    *version.lock().unwrap() = Some(ver);
+                    *version.lock().unwrap() = Some(ver.clone());
+                    *latest.lock().unwrap() = Some(ver);
+                    *update_available.lock().unwrap() = false;
                     *status.lock().unwrap() = WebAppStatus::Stopped;
                     log::info!("retouched_web downloaded successfully");
                 }
@@ -481,6 +548,16 @@ impl qobject::WebAppBackend {
                 }
             }
         });
+    }
+
+    fn check_for_updates(self: Pin<&mut Self>) {
+        let mut state = WEB_STATE.lock().unwrap();
+        ensure_initialized(&mut state);
+        spawn_update_check(
+            state.current_version.clone(),
+            state.latest_version.clone(),
+            state.update_available.clone(),
+        );
     }
 
     fn set_custom_dir(self: Pin<&mut Self>, dir: QString) {

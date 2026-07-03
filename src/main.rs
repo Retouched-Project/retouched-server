@@ -479,6 +479,26 @@ async fn run_headless(cli: Cli) -> Result<(), Box<dyn std::error::Error + Send +
             );
         }
 
+        if config.custom_web_dir.is_none() {
+            let installed =
+                retouched_server::web_manager::read_installed_version(&effective_web_dir);
+            std::thread::spawn(move || {
+                match retouched_server::web_manager::fetch_latest_version() {
+                    Ok(latest) => {
+                        if let Some(current) = installed
+                            && !current.is_empty()
+                            && current != latest
+                        {
+                            log::warn!(
+                                "Retouched Web update available: {current} -> {latest}. Run 'retouched-server web download' to update."
+                            );
+                        }
+                    }
+                    Err(e) => log::debug!("Retouched Web update check failed: {e}"),
+                }
+            });
+        }
+
         Some(retouched_server::web_app_server::spawn_web_app_server(
             effective_web_dir,
             bp,
