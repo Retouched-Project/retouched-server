@@ -85,7 +85,11 @@ impl Default for Config {
 impl Config {
     pub fn from_file(path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
         let content = std::fs::read_to_string(path)?;
-        let cfg: Config = serde_json::from_str(&content)?;
+        let mut cfg: Config = serde_json::from_str(&content)?;
+        // treat an empty custom web dir as unset so it falls back to the managed dir
+        if cfg.custom_web_dir.as_deref() == Some("") {
+            cfg.custom_web_dir = None;
+        }
         Ok(cfg)
     }
 
