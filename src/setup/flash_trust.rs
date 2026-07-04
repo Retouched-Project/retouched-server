@@ -22,7 +22,8 @@ pub fn trust_directory() -> PathBuf {
     }
     #[cfg(target_os = "macos")]
     {
-        dirs::home_dir()
+        directories::BaseDirs::new()
+            .map(|d| d.home_dir().to_path_buf())
             .unwrap_or_else(|| PathBuf::from("."))
             .join("Library")
             .join("Preferences")
@@ -33,7 +34,8 @@ pub fn trust_directory() -> PathBuf {
     }
     #[cfg(target_os = "linux")]
     {
-        dirs::home_dir()
+        directories::BaseDirs::new()
+            .map(|d| d.home_dir().to_path_buf())
             .unwrap_or_else(|| PathBuf::from("."))
             .join(".macromedia")
             .join("Flash_Player")

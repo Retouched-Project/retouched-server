@@ -24,7 +24,15 @@ gui = ["dep:cxx", "dep:cxx-qt", "dep:cxx-qt-lib", "dep:cxx-qt-build"]
 # bronze-monkey = { git = "https://github.com/Retouched-Project/bronze-monkey", branch = "main" }
 bronze-monkey = { path = ".." }
 
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = [
+    "rt-multi-thread",
+    "macros",
+    "net",
+    "time",
+    "sync",
+    "io-util",
+    "signal",
+] }
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -33,20 +41,19 @@ env_logger = "0.11"
 uuid = { version = "1", features = ["v4"] }
 axum = "0.8"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "blocking", "json"] }
-zip = "2"
+zip = "8"
 directories = "6"
 
 # GUI (Qt via CXX-Qt)
 cxx = { version = "1", optional = true }
 cxx-qt = { version = "0.9", optional = true }
-cxx-qt-lib = { version = "0.9", features = ["qt_full"], optional = true }
+cxx-qt-lib = { version = "0.9", optional = true }
 
 local-ip-address = "0.6"
 qrcode = "0.14"
 image = { version = "0.25", default-features = false, features = ["png"] }
 rcgen = "0.13"
 time = "0.3"
-dirs = "6"
 open = "5"
 
 # WebRTC bridge

@@ -25,6 +25,7 @@ fn main() {
     .file("src/gui/settings_backend.rs")
     .file("src/gui/wizard_backend.rs")
     .file("src/gui/window_backend.rs")
+    .qt_module("Gui")
     .qt_module("Quick")
     .qt_module("QuickControls2")
     .qt_module("Widgets")
