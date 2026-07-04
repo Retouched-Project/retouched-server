@@ -52,7 +52,7 @@ pub fn detect_backend() -> FirewallBackend {
 }
 
 #[cfg(target_os = "linux")]
-fn which_exists(cmd: &str) -> bool {
+pub(crate) fn which_exists(cmd: &str) -> bool {
     Command::new("which")
         .arg(cmd)
         .output()

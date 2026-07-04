@@ -10,6 +10,7 @@ pub const POLICY_PORT: u16 = 843;
 
 #[derive(Clone, Debug)]
 pub enum RedirectBackend {
+    Firewalld,
     Iptables,
     Pf,
     None,
@@ -18,6 +19,7 @@ pub enum RedirectBackend {
 impl RedirectBackend {
     pub fn name(&self) -> &str {
         match self {
+            Self::Firewalld => "firewalld",
             Self::Iptables => "iptables",
             Self::Pf => "pf",
             Self::None => "none",
@@ -25,10 +27,19 @@ impl RedirectBackend {
     }
 }
 
+#[cfg(target_os = "linux")]
+fn firewalld_available() -> bool {
+    crate::setup::firewall::which_exists("firewall-cmd")
+}
+
 pub fn detect_backend() -> RedirectBackend {
     #[cfg(target_os = "linux")]
     {
-        RedirectBackend::Iptables
+        if firewalld_available() {
+            RedirectBackend::Firewalld
+        } else {
+            RedirectBackend::Iptables
+        }
     }
     #[cfg(target_os = "macos")]
     {
@@ -102,6 +113,20 @@ pub fn apply(
     target_port: u16,
 ) -> Result<(), Box<dyn std::error::Error>> {
     match backend {
+        RedirectBackend::Firewalld => {
+            let status = Command::new("pkexec")
+                .args(["sh", "-c", &firewalld_apply_script(target_port)])
+                .status()?;
+            if !status.success() {
+                return Err("pkexec firewall-cmd: failed to add policy port redirect".into());
+            }
+            log::info!(
+                "firewalld: redirecting tcp/{} to tcp/{} (persistent)",
+                POLICY_PORT,
+                target_port
+            );
+            Ok(())
+        }
         RedirectBackend::Iptables => {
             let status = Command::new("pkexec")
                 .args(["sh", "-c", &iptables_apply_script(target_port)])
@@ -126,6 +151,15 @@ pub fn remove(
     target_port: u16,
 ) -> Result<(), Box<dyn std::error::Error>> {
     match backend {
+        RedirectBackend::Firewalld => {
+            let status = Command::new("pkexec")
+                .args(["sh", "-c", &firewalld_remove_script(target_port)])
+                .status()?;
+            if !status.success() {
+                log::warn!("firewalld: policy port redirect removal may have failed");
+            }
+            Ok(())
+        }
         RedirectBackend::Iptables => {
             let status = Command::new("pkexec")
                 .args(["sh", "-c", &iptables_remove_script(target_port)])
@@ -138,6 +172,34 @@ pub fn remove(
         RedirectBackend::Pf => Err(pf_unimplemented(target_port)),
         RedirectBackend::None => Err("No supported port-redirect backend detected".into()),
     }
+}
+
+fn firewalld_direct_rule(target_port: u16) -> String {
+    format!(
+        "ipv4 nat OUTPUT 0 -p tcp --dport {pp} -j REDIRECT --to-ports {tp}",
+        pp = POLICY_PORT,
+        tp = target_port
+    )
+}
+
+fn firewalld_apply_script(target_port: u16) -> String {
+    let rule = firewalld_direct_rule(target_port);
+    format!(
+        "( firewall-cmd --direct --query-rule {rule} >/dev/null 2>&1 \
+          || firewall-cmd --direct --add-rule {rule} ) \
+         && ( firewall-cmd --permanent --direct --query-rule {rule} >/dev/null 2>&1 \
+          || firewall-cmd --permanent --direct --add-rule {rule} )",
+        rule = rule
+    )
+}
+
+fn firewalld_remove_script(target_port: u16) -> String {
+    let rule = firewalld_direct_rule(target_port);
+    format!(
+        "firewall-cmd --direct --remove-rule {rule} 2>/dev/null ; \
+         firewall-cmd --permanent --direct --remove-rule {rule} 2>/dev/null ; true",
+        rule = rule
+    )
 }
 
 fn iptables_apply_script(target_port: u16) -> String {
