@@ -37,7 +37,7 @@ struct WebAppInternalState {
 
     web_app_status: Arc<Mutex<WebAppStatus>>,
     web_app_error: Arc<Mutex<String>>,
-    web_app_handle: Option<axum_server::Handle>,
+    web_app_handle: Option<axum_server::Handle<std::net::SocketAddr>>,
 
     current_version: Arc<Mutex<Option<String>>>,
     latest_version: Arc<Mutex<Option<String>>>,

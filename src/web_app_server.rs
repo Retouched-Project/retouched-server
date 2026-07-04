@@ -71,7 +71,7 @@ pub async fn run_web_app_server(
     web_dir: std::path::PathBuf,
     webrtc_port: u16,
     cert_dir: std::path::PathBuf,
-    handle: axum_server::Handle,
+    handle: axum_server::Handle<std::net::SocketAddr>,
 ) -> Result<(), String> {
     if !web_dir.join("index.html").exists() {
         let msg = format!(
@@ -136,7 +136,7 @@ pub fn spawn_web_app_server(
     web_dir: std::path::PathBuf,
     webrtc_port: u16,
     cert_dir: std::path::PathBuf,
-) -> axum_server::Handle {
+) -> axum_server::Handle<std::net::SocketAddr> {
     let handle = axum_server::Handle::new();
     let h_clone = handle.clone();
     tokio::spawn(async move {

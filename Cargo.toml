@@ -34,12 +34,12 @@ uuid = { version = "1", features = ["v4"] }
 axum = "0.8"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "blocking", "json"] }
 zip = "2"
-directories = "6.0.0"
+directories = "6"
 
 # GUI (Qt via CXX-Qt)
 cxx = { version = "1", optional = true }
-cxx-qt = { version = "0.8", optional = true }
-cxx-qt-lib = { version = "0.8", features = ["qt_full"], optional = true }
+cxx-qt = { version = "0.9", optional = true }
+cxx-qt-lib = { version = "0.9", features = ["qt_full"], optional = true }
 
 local-ip-address = "0.6"
 qrcode = "0.14"
@@ -47,25 +47,26 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 rcgen = "0.13"
 time = "0.3"
 dirs = "6"
-walkdir = "2"
 open = "5"
 
 # WebRTC bridge
 webrtc = "0.17.1"
-tokio-rustls = "0.26"
 rustls = { version = "0.23", features = ["ring"] }
 rustls-pemfile = "2"
-tower-http = { version = "0.6", features = ["cors", "fs"] }
-tower = "0.5"
-axum-server = { version = "0.7", features = ["tls-rustls"] }
+tower-http = { version = "0.7", features = ["cors", "fs"] }
+axum-server = { version = "0.8", features = ["tls-rustls"] }
 bytes = "1"
 
-serde_urlencoded = "0.7.1"
-flate2 = "1.1.9"
-tar = "0.4.45"
-url = "2.5.8"
+serde_urlencoded = "0.7"
+flate2 = "1"
+tar = "0.4"
+url = "2"
 [build-dependencies]
-cxx-qt-build = { version = "0.8", optional = true }
+cxx-qt-build = { version = "0.9", optional = true }
 
 [target.'cfg(windows)'.build-dependencies]
-winresource = "0.1.31"
+winresource = "0.1"
+
+[package.metadata.cargo-machete]
+# cxx is required by cxx-qt's generated bridge code, not referenced in our source
+ignored = ["cxx"]
