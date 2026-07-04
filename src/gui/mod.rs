@@ -6,6 +6,7 @@ pub mod patcher_backend;
 pub mod server_backend;
 pub mod settings_backend;
 pub mod web_app_backend;
+pub mod window_backend;
 pub mod wizard_backend;
 
 use std::sync::Arc;

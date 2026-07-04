@@ -8,7 +8,7 @@ import com.retouched.server
 
 ApplicationWindow {
     id: root
-    visible: true
+    visible: false
     width: 900
     height: 650
     minimumWidth: 600
@@ -25,12 +25,37 @@ ApplicationWindow {
     property real logHeight: 250
 
     onClosing: function (close) {
+        windowBackend.save_size(root.width, root.height);
         close.accepted = false;
         root.hide();
     }
 
+    // restore the saved size before showing, so there is no resize flash
+    Component.onCompleted: {
+        var w = windowBackend.saved_width();
+        var h = windowBackend.saved_height();
+        if (w >= root.minimumWidth && h >= root.minimumHeight) {
+            root.width = w;
+            root.height = h;
+        }
+        root.visible = true;
+    }
+
+    onWidthChanged: saveSizeTimer.restart()
+    onHeightChanged: saveSizeTimer.restart()
+
     LogBackend {
         id: logBackend
+    }
+
+    WindowBackend {
+        id: windowBackend
+    }
+
+    Timer {
+        id: saveSizeTimer
+        interval: 500
+        onTriggered: windowBackend.save_size(root.width, root.height)
     }
 
     Timer {
