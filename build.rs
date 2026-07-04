@@ -18,6 +18,7 @@ fn main() {
         "qml/components/LogViewer.qml",
     ]))
     .qrc("assets/assets.qrc")
+    .file("src/gui/log_backend.rs")
     .file("src/gui/server_backend.rs")
     .file("src/gui/web_app_backend.rs")
     .file("src/gui/patcher_backend.rs")
@@ -37,7 +38,6 @@ fn main() {
         res.set_icon("assets/retouched_logo_icons.ico");
         res.compile().unwrap();
     }
-
 }
 
 #[cfg(not(feature = "gui"))]

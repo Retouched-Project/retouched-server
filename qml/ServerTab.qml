@@ -9,14 +9,10 @@ import com.retouched.server
 Item {
     id: serverTab
 
-    property bool logVisible: false
-    property bool logAutoScroll: true
-    property int logLevelFilter: 3
     property var clientData: ({
             games: [],
             controllers: []
         })
-    property var logData: []
 
     ServerBackend {
         id: backend
@@ -35,13 +31,6 @@ Item {
                     games: [],
                     controllers: []
                 };
-            }
-            if (serverTab.logVisible) {
-                try {
-                    serverTab.logData = JSON.parse(backend.log_entries_json(serverTab.logLevelFilter));
-                } catch (e) {
-                    serverTab.logData = [];
-                }
             }
         }
     }
@@ -190,80 +179,6 @@ Item {
 
         Item {
             Layout.fillHeight: true
-        }
-
-        Rectangle {
-            Layout.fillWidth: true
-            height: 1
-            color: palette.mid
-        }
-
-        RowLayout {
-            spacing: 8
-
-            Canvas {
-                width: 10
-                height: 10
-                Layout.alignment: Qt.AlignVCenter
-                rotation: serverTab.logVisible ? 90 : 0
-                Behavior on rotation {
-                    NumberAnimation {
-                        duration: 150
-                    }
-                }
-                onPaint: {
-                    var ctx = getContext("2d");
-                    ctx.reset();
-                    ctx.fillStyle = palette.text;
-                    ctx.beginPath();
-                    ctx.moveTo(2, 1);
-                    ctx.lineTo(8, 5);
-                    ctx.lineTo(2, 9);
-                    ctx.closePath();
-                    ctx.fill();
-                }
-            }
-
-            Button {
-                text: "Log"
-                flat: true
-                onClicked: serverTab.logVisible = !serverTab.logVisible
-            }
-
-            Item {
-                visible: serverTab.logVisible
-                Layout.fillWidth: true
-            }
-
-            Button {
-                text: "Clear"
-                visible: serverTab.logVisible
-                onClicked: backend.clear_log()
-            }
-
-            ComboBox {
-                visible: serverTab.logVisible
-                model: ["Error", "Warn", "Info", "Debug", "Trace"]
-                currentIndex: serverTab.logLevelFilter - 1
-                onCurrentIndexChanged: serverTab.logLevelFilter = currentIndex + 1
-            }
-
-            CheckBox {
-                visible: serverTab.logVisible
-                text: "Auto-scroll"
-                checked: serverTab.logAutoScroll
-                onCheckedChanged: serverTab.logAutoScroll = checked
-            }
-        }
-
-        LogViewer {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            visible: serverTab.logVisible
-            logVisible: serverTab.logVisible
-            autoScroll: serverTab.logAutoScroll
-            levelFilter: serverTab.logLevelFilter
-            entries: serverTab.logData
         }
     }
 }

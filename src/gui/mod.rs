@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 ddavef/KinteLiX retouched-server
 
+pub mod log_backend;
 pub mod patcher_backend;
 pub mod server_backend;
 pub mod settings_backend;

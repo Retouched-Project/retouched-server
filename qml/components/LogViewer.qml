@@ -13,33 +13,71 @@ Item {
     property int levelFilter: 3
     property var entries: []
 
+    property string _sig: ""
+
     implicitHeight: logVisible ? 250 : 0
     clip: true
 
-    ListView {
-        id: logList
+    function escapeHtml(s) {
+        return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    function rebuild() {
+        var e = logViewer.entries;
+        var sig = e.length + "|" + (e.length ? e[e.length - 1].time : "");
+        if (sig === logViewer._sig) {
+            return;
+        }
+        logViewer._sig = sig;
+
+        var hadSelection = edit.selectionStart !== edit.selectionEnd;
+        var selStart = edit.selectionStart;
+        var selEnd = edit.selectionEnd;
+
+        var parts = [];
+        for (var i = 0; i < e.length; i++) {
+            parts.push('<span style="color:' + e[i].color + '">[' + e[i].level + '] ' + escapeHtml(e[i].message) + '</span>');
+        }
+        edit.text = parts.join('<br>');
+
+        // keep an existing selection in place, only follow the tail when nothing is selected
+        if (hadSelection) {
+            edit.select(selStart, selEnd);
+        } else if (logViewer.autoScroll) {
+            Qt.callLater(scrollToEnd);
+        }
+    }
+
+    function scrollToEnd() {
+        flick.contentY = Math.max(0, flick.contentHeight - flick.height);
+    }
+
+    onEntriesChanged: rebuild()
+
+    Flickable {
+        id: flick
         anchors.fill: parent
-        model: logViewer.entries
+        contentWidth: width
+        contentHeight: edit.implicitHeight
         clip: true
-
-        delegate: Text {
-            width: logList.width
-            text: "[" + modelData.level + "] " + modelData.message
-            color: modelData.color
-            font.family: "monospace"
-            font.pixelSize: 12
-            wrapMode: Text.NoWrap
-            elide: Text.ElideRight
-        }
-
-        onCountChanged: {
-            if (logViewer.autoScroll) {
-                logList.positionViewAtEnd();
-            }
-        }
+        boundsBehavior: Flickable.StopAtBounds
 
         ScrollBar.vertical: ScrollBar {
             policy: ScrollBar.AsNeeded
+        }
+
+        TextEdit {
+            id: edit
+            width: flick.width
+            readOnly: true
+            selectByMouse: true
+            persistentSelection: true
+            textFormat: TextEdit.RichText
+            wrapMode: TextEdit.Wrap
+            font.family: "monospace"
+            font.pixelSize: 12
+            color: palette.text
+            text: ""
         }
     }
 
