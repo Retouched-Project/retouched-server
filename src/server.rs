@@ -368,6 +368,12 @@ async fn route_output(state: &Arc<ServerState>, output: &ProcessOutput, source_c
                 bind_device(state, source_client_id, record).await;
             }
             Event::PeerRegistered { info, domain, .. } => {
+                log::info!(
+                    "Registered: {} appId={} slot={}",
+                    info.device.device_name,
+                    info.app_id,
+                    info.slot_id
+                );
                 update_client_registry(state, info, domain.as_deref()).await;
             }
             Event::HostUpdated { info } => {
@@ -468,7 +474,7 @@ async fn bind_device(state: &Arc<ServerState>, source_client_id: u64, record: &D
         }
     }
     log::info!(
-        "Registry updated: {} ({}) type={}",
+        "Device connected: {} ({}) type={}",
         record.core.device_name,
         dev_id,
         record.core.device_type.code()

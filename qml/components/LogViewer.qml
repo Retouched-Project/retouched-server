@@ -36,7 +36,7 @@ Item {
 
         var parts = [];
         for (var i = 0; i < e.length; i++) {
-            parts.push('<span style="color:' + e[i].color + '">[' + e[i].level + '] ' + escapeHtml(e[i].message) + '</span>');
+            parts.push('[<span style="color:' + e[i].color + '">' + e[i].level + '</span>] ' + escapeHtml(e[i].message));
         }
         edit.text = parts.join('<br>');
 
@@ -78,6 +78,16 @@ Item {
             font.pixelSize: 12
             color: palette.text
             text: ""
+
+            // copy plain text only, never the RichText color markup
+            Keys.onPressed: (event) => {
+                if (event.matches(StandardKey.Copy)) {
+                    copyBuffer.text = edit.selectedText.replace(/\u2029/g, "\n");
+                    copyBuffer.selectAll();
+                    copyBuffer.copy();
+                    event.accepted = true;
+                }
+            }
         }
     }
 
@@ -86,5 +96,11 @@ Item {
         text: "No log entries"
         visible: logViewer.entries.length === 0 && logViewer.logVisible
         opacity: 0.5
+    }
+
+    TextEdit {
+        id: copyBuffer
+        visible: false
+        textFormat: TextEdit.PlainText
     }
 }

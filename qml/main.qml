@@ -32,6 +32,9 @@ ApplicationWindow {
 
     // restore the saved size before showing, so there is no resize flash
     Component.onCompleted: {
+        var lvl = logBackend.capture_level();
+        if (lvl >= 1)
+            root.logLevelFilter = lvl;
         var w = windowBackend.saved_width();
         var h = windowBackend.saved_height();
         if (w >= root.minimumWidth && h >= root.minimumHeight) {
@@ -186,7 +189,10 @@ ApplicationWindow {
                 visible: root.logExpanded
                 model: ["Error", "Warn", "Info", "Debug", "Trace"]
                 currentIndex: root.logLevelFilter - 1
-                onCurrentIndexChanged: root.logLevelFilter = currentIndex + 1
+                onActivated: {
+                    root.logLevelFilter = currentIndex + 1;
+                    logBackend.set_capture_level(currentIndex + 1);
+                }
             }
 
             CheckBox {

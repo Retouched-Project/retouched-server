@@ -298,7 +298,9 @@ async fn run_headless(cli: Cli) -> Result<(), Box<dyn std::error::Error + Send +
     let effective_log_level = cli.log_level.as_deref().unwrap_or(&config.log_level);
     let log_level = parse_log_level(effective_log_level, cli.debug);
     env_logger::Builder::new()
-        .filter_level(log_level)
+        .filter_level(gui_logger::DEP_MAX_LEVEL)
+        .filter_module("bronze_monkey", log_level)
+        .filter_module("retouched_server", log_level)
         .format_timestamp_millis()
         .init();
 
