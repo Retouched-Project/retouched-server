@@ -15,7 +15,7 @@ Item {
     }
 
     Timer {
-        interval: 500
+        interval: 200
         running: true
         repeat: true
         onTriggered: backend.refresh()
@@ -134,7 +134,7 @@ Item {
         Button {
             text: "Download Tools"
             enabled: !backend.is_busy && !backend.all_tools_present
-            onClicked: backend.download_tools()
+            onClicked: { backend.download_tools(); backend.refresh(); }
         }
 
         Rectangle {
@@ -146,7 +146,7 @@ Item {
         Button {
             text: "Patch & Sign APK"
             enabled: !backend.is_busy && backend.all_tools_present && backend.apk_path !== "" && backend.target_ip !== ""
-            onClicked: backend.patch_and_sign()
+            onClicked: { backend.patch_and_sign(); backend.refresh(); }
         }
 
         RowLayout {
@@ -174,7 +174,7 @@ Item {
 
             Button {
                 text: "Open output folder"
-                onClicked: backend.open_output_folder()
+                onClicked: { backend.open_output_folder(); backend.refresh(); }
             }
         }
 

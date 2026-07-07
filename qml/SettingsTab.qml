@@ -18,7 +18,7 @@ Item {
     }
 
     Timer {
-        interval: 1000
+        interval: 200
         running: true
         repeat: true
         onTriggered: {
@@ -81,7 +81,7 @@ Item {
                     Button {
                         text: "Remove"
                         flat: true
-                        onClicked: backend.remove_trust_dir(index)
+                        onClicked: { backend.remove_trust_dir(index); backend.refresh(); }
                     }
                 }
             }
@@ -111,11 +111,11 @@ Item {
                 Button {
                     text: "Add to trust config"
                     enabled: backend.new_trust_directory !== ""
-                    onClicked: backend.add_trust_dir()
+                    onClicked: { backend.add_trust_dir(); backend.refresh(); }
                 }
                 Button {
                     text: "Remove all"
-                    onClicked: backend.remove_all_trust()
+                    onClicked: { backend.remove_all_trust(); backend.refresh(); }
                 }
             }
 
@@ -170,11 +170,11 @@ Item {
 
                 Button {
                     text: "Apply hosts redirect"
-                    onClicked: backend.apply_hosts_redirect()
+                    onClicked: { backend.apply_hosts_redirect(); backend.refresh(); }
                 }
                 Button {
                     text: "Remove hosts redirect"
-                    onClicked: backend.remove_hosts_redirect()
+                    onClicked: { backend.remove_hosts_redirect(); backend.refresh(); }
                 }
             }
 
@@ -218,11 +218,11 @@ Item {
 
                 Button {
                     text: "Open ports"
-                    onClicked: backend.open_ports()
+                    onClicked: { backend.open_ports(); backend.refresh(); }
                 }
                 Button {
                     text: "Close ports"
-                    onClicked: backend.close_ports()
+                    onClicked: { backend.close_ports(); backend.refresh(); }
                 }
             }
 
@@ -289,11 +289,11 @@ Item {
 
                 Button {
                     text: "Enable redirect"
-                    onClicked: backend.apply_policy_redirect()
+                    onClicked: { backend.apply_policy_redirect(); backend.refresh(); }
                 }
                 Button {
                     text: "Disable redirect"
-                    onClicked: backend.remove_policy_redirect()
+                    onClicked: { backend.remove_policy_redirect(); backend.refresh(); }
                 }
             }
 

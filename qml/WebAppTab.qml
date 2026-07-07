@@ -15,7 +15,7 @@ Item {
     }
 
     Timer {
-        interval: 500
+        interval: 200
         running: true
         repeat: true
         onTriggered: backend.refresh()
@@ -119,6 +119,7 @@ Item {
                             backend.stop_bridge();
                         else
                             backend.start_bridge();
+                        backend.refresh();
                     }
                 }
             }
@@ -163,7 +164,7 @@ Item {
                 Button {
                     text: "Clear"
                     visible: backend.custom_web_dir !== ""
-                    onClicked: backend.clear_custom_dir()
+                    onClicked: { backend.clear_custom_dir(); backend.refresh(); }
                 }
             }
 
@@ -240,13 +241,13 @@ Item {
                     text: (backend.web_app_status === "Not found" || backend.web_app_status === "Error") ? "Download Retouched Web" : "Update Retouched Web"
                     enabled: backend.web_app_status !== "Downloading..." && backend.web_app_status !== "Running"
                     highlighted: backend.update_available
-                    onClicked: backend.download_release()
+                    onClicked: { backend.download_release(); backend.refresh(); }
                 }
 
                 Button {
                     text: "Check for Updates"
                     enabled: backend.web_app_status !== "Downloading..."
-                    onClicked: backend.check_for_updates()
+                    onClicked: { backend.check_for_updates(); backend.refresh(); }
                 }
 
                 BusyIndicator {
@@ -268,6 +269,7 @@ Item {
                             backend.stop_web_app();
                         else
                             backend.start_web_app();
+                        backend.refresh();
                     }
                 }
             }

@@ -38,7 +38,6 @@ macOS:
 - [X] Add an about page. (v1.0.1)
 - [X] Improve Retouched Web update UX. (v2.0.0)
 - [ ] Update checker
-- [ ] Switch from polling to pushing updates to the Qt GUI.
 - [ ] Binary signing
 - [ ] Windows installer
 - [ ] Better macOS dmg with drag and drop and background

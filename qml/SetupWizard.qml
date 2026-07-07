@@ -26,7 +26,7 @@ Dialog {
     visible: backend.active
 
     Timer {
-        interval: 1000
+        interval: 200
         running: backend.active
         repeat: true
         onTriggered: {
@@ -75,7 +75,7 @@ Dialog {
             }
             Button {
                 text: "Next >"
-                onClicked: backend.next_page()
+                onClicked: { backend.next_page(); backend.refresh(); }
             }
         }
 
@@ -114,7 +114,7 @@ Dialog {
             Button {
                 text: "Write trust config"
                 visible: backend.games_directory !== "" && !backend.trust_written
-                onClicked: backend.write_trust_config()
+                onClicked: { backend.write_trust_config(); backend.refresh(); }
             }
 
             Label {
@@ -130,11 +130,11 @@ Dialog {
                 spacing: 8
                 Button {
                     text: "< Back"
-                    onClicked: backend.prev_page()
+                    onClicked: { backend.prev_page(); backend.refresh(); }
                 }
                 Button {
                     text: "Next >"
-                    onClicked: backend.next_page()
+                    onClicked: { backend.next_page(); backend.refresh(); }
                 }
             }
         }
@@ -176,7 +176,7 @@ Dialog {
             Button {
                 text: "Apply hosts redirect"
                 visible: !backend.hosts_already_configured
-                onClicked: backend.apply_hosts()
+                onClicked: { backend.apply_hosts(); backend.refresh(); }
             }
 
             Item {
@@ -186,11 +186,11 @@ Dialog {
                 spacing: 8
                 Button {
                     text: "< Back"
-                    onClicked: backend.prev_page()
+                    onClicked: { backend.prev_page(); backend.refresh(); }
                 }
                 Button {
                     text: "Next >"
-                    onClicked: backend.next_page()
+                    onClicked: { backend.next_page(); backend.refresh(); }
                 }
             }
         }
@@ -221,7 +221,7 @@ Dialog {
             Button {
                 text: "Open ports"
                 visible: backend.firewall_backend_name !== "None" && backend.firewall_backend_name !== "" && !backend.firewall_opened
-                onClicked: backend.open_firewall_ports()
+                onClicked: { backend.open_firewall_ports(); backend.refresh(); }
             }
 
             Label {
@@ -237,11 +237,11 @@ Dialog {
                 spacing: 8
                 Button {
                     text: "< Back"
-                    onClicked: backend.prev_page()
+                    onClicked: { backend.prev_page(); backend.refresh(); }
                 }
                 Button {
                     text: "Next >"
-                    onClicked: backend.next_page()
+                    onClicked: { backend.next_page(); backend.refresh(); }
                 }
             }
         }
@@ -264,7 +264,7 @@ Dialog {
             }
             Button {
                 text: "Done"
-                onClicked: backend.finish()
+                onClicked: { backend.finish(); backend.refresh(); }
             }
         }
     }

@@ -149,21 +149,25 @@ pub mod qobject {
 }
 
 impl qobject::ServerBackend {
-    fn start_server(self: Pin<&mut Self>) {
+    fn start_server(mut self: Pin<&mut Self>) {
         if let Some(init) = BACKEND_INIT.get() {
             let config = init.config.lock().unwrap().clone();
             let data_dir = init.data_dir.clone();
+            init.shared.set_server_status(ServerStatus::Starting);
             let _ = init
                 .server_tx
                 .try_send(ServerCommand::Start { config, data_dir });
+            self.as_mut().set_server_status(QString::from("Starting"));
         }
     }
 
-    fn stop_server(self: Pin<&mut Self>) {
+    fn stop_server(mut self: Pin<&mut Self>) {
         if let Some(init) = BACKEND_INIT.get() {
             init.shared
                 .request_server_stop
                 .store(true, std::sync::atomic::Ordering::Relaxed);
+            init.shared.set_server_status(ServerStatus::Stopping);
+            self.as_mut().set_server_status(QString::from("Stopping"));
         }
     }
 
