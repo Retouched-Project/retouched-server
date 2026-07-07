@@ -46,6 +46,18 @@ fn level_filter_from_i32(level: i32) -> log::LevelFilter {
     }
 }
 
+fn level_name_from_i32(level: i32) -> &'static str {
+    match level {
+        0 => "off",
+        1 => "error",
+        2 => "warn",
+        3 => "info",
+        4 => "debug",
+        5 => "trace",
+        _ => "info",
+    }
+}
+
 impl qobject::LogBackend {
     fn log_entries_json(&self, level_filter: i32) -> QString {
         let Some(init) = BACKEND_INIT.get() else {
@@ -104,5 +116,15 @@ impl qobject::LogBackend {
 
     fn set_capture_level(&self, level: i32) {
         log::set_max_level(level_filter_from_i32(level));
+        if let Some(init) = BACKEND_INIT.get() {
+            let name = level_name_from_i32(level);
+            let mut cfg = init.config.lock().unwrap();
+            if cfg.log_level != name {
+                cfg.log_level = name.to_string();
+                if let Err(e) = cfg.save_to_file(&init.config_path) {
+                    log::warn!("Failed to save log level: {}", e);
+                }
+            }
+        }
     }
 }
