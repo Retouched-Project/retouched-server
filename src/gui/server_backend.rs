@@ -256,21 +256,33 @@ impl qobject::ServerBackend {
                         None
                     }
                 });
+                let status = if ctrl_names.is_empty() {
+                    "Idle".to_string()
+                } else {
+                    ctrl_names.join(", ")
+                };
                 serde_json::json!({
                     "name": g.device_name.as_deref().unwrap_or("Unknown"),
                     "typeName": device_type_name(g.device_type_code),
                     "appLabel": app_label(g.device_type_code, g.domain.as_deref()),
                     "typeColor": device_type_color(g.device_type_code),
                     "controllerCount": ctrl_names.len(),
-                    "controllerNames": ctrl_names,
+                    "status": status,
                     "connectionTime": format!("{}:{:02}", dur / 60, dur % 60),
                     "flashing": is_in_metrics(g.device_id.as_ref(), &metrics),
                     "isRetouched": is_retouched_domain(g.domain.as_deref()),
-                    "iconUrl": icon_url,
+                    "iconUrl": icon_url.unwrap_or_default(),
                     "slotId": g.slot_id.unwrap_or(0),
                     "slotColor": slot_color(g.slot_id.unwrap_or(0)),
                     "currentPlayers": g.current_players.unwrap_or(0),
                     "maxPlayers": g.max_players.unwrap_or(0),
+                    "deviceId": g.device_id.as_deref().unwrap_or(""),
+                    "appId": g.app_id.as_deref().unwrap_or(""),
+                    "addr": g.addr,
+                    "address": g.announced_address.as_deref().unwrap_or(""),
+                    "reliablePort": g.reliable_port.unwrap_or(0),
+                    "unreliablePort": g.unreliable_port.unwrap_or(0),
+                    "domain": g.domain.as_deref().unwrap_or(""),
                 })
             })
             .collect();
@@ -296,10 +308,17 @@ impl qobject::ServerBackend {
                     "appLabel": app_label(c.device_type_code, c.domain.as_deref()),
                     "typeColor": device_type_color(c.device_type_code),
                     "addr": c.addr,
-                    "connectedGame": connected_game,
+                    "connectedGame": connected_game.unwrap_or(""),
                     "connectionTime": format!("{}:{:02}", dur / 60, dur % 60),
                     "flashing": is_in_metrics(c.device_id.as_ref(), &metrics),
                     "isRetouched": is_retouched_domain(c.domain.as_deref()),
+                    "deviceId": c.device_id.as_deref().unwrap_or(""),
+                    "appId": c.app_id.as_deref().unwrap_or(""),
+                    "slotId": c.slot_id.unwrap_or(0),
+                    "address": c.announced_address.as_deref().unwrap_or(""),
+                    "reliablePort": c.reliable_port.unwrap_or(0),
+                    "unreliablePort": c.unreliable_port.unwrap_or(0),
+                    "domain": c.domain.as_deref().unwrap_or(""),
                 })
             })
             .collect();

@@ -9,10 +9,45 @@ import com.retouched.server
 Item {
     id: serverTab
 
-    property var clientData: ({
-            games: [],
-            controllers: []
-        })
+    property var expandedCards: ({})
+
+    function toggleCard(deviceId) {
+        var m = Object.assign({}, serverTab.expandedCards);
+        m[deviceId] = !m[deviceId];
+        serverTab.expandedCards = m;
+    }
+
+    function syncModel(model, items) {
+        var present = {};
+        for (var a = 0; a < items.length; a++)
+            present[items[a].deviceId] = true;
+        for (var r = model.count - 1; r >= 0; r--) {
+            if (!present[model.get(r).deviceId])
+                model.remove(r);
+        }
+        for (var i = 0; i < items.length; i++) {
+            var it = items[i];
+            var idx = -1;
+            for (var j = 0; j < model.count; j++) {
+                if (model.get(j).deviceId === it.deviceId) {
+                    idx = j;
+                    break;
+                }
+            }
+            if (idx === -1)
+                model.append(it);
+            else
+                model.set(idx, it);
+        }
+    }
+
+    ListModel {
+        id: gamesModel
+    }
+
+    ListModel {
+        id: controllersModel
+    }
 
     ServerBackend {
         id: backend
@@ -25,12 +60,12 @@ Item {
         onTriggered: {
             backend.refresh();
             try {
-                serverTab.clientData = JSON.parse(backend.client_data_json());
+                var data = JSON.parse(backend.client_data_json());
+                serverTab.syncModel(gamesModel, data.games || []);
+                serverTab.syncModel(controllersModel, data.controllers || []);
             } catch (e) {
-                serverTab.clientData = {
-                    games: [],
-                    controllers: []
-                };
+                gamesModel.clear();
+                controllersModel.clear();
             }
         }
     }
@@ -108,77 +143,105 @@ Item {
             color: palette.mid
         }
 
-        Label {
-            text: "Games (" + serverTab.clientData.games.length + ")"
-            font.bold: true
-            font.pixelSize: 16
-        }
-
-        Flow {
+        ScrollView {
+            id: clientsScroll
             Layout.fillWidth: true
-            spacing: 6
-
-            Repeater {
-                model: serverTab.clientData.games
-                DeviceCard {
-                    deviceName: modelData.name
-                    deviceType: modelData.typeName
-                    appLabel: modelData.appLabel
-                    statusText: modelData.controllerNames.length > 0 ? modelData.controllerNames.join(", ") : "Idle"
-                    isConnected: modelData.controllerCount > 0
-                    connectionTime: modelData.connectionTime
-                    typeColor: modelData.typeColor
-                    flashing: modelData.flashing
-                    isRetouched: modelData.isRetouched || false
-                    iconUrl: modelData.iconUrl || ""
-                    slotId: modelData.slotId || 0
-                    slotColor: modelData.slotColor || "#666666"
-                    currentPlayers: modelData.currentPlayers || 0
-                    maxPlayers: modelData.maxPlayers || 0
-                }
-            }
-        }
-
-        Label {
-            text: "No games connected."
-            visible: serverTab.clientData.games.length === 0
-            opacity: 0.5
-        }
-
-        Label {
-            text: "Controllers (" + serverTab.clientData.controllers.length + ")"
-            font.bold: true
-            font.pixelSize: 16
-        }
-
-        Flow {
-            Layout.fillWidth: true
-            spacing: 6
-
-            Repeater {
-                model: serverTab.clientData.controllers
-                DeviceCard {
-                    deviceName: modelData.name
-                    deviceType: modelData.typeName
-                    appLabel: modelData.appLabel
-                    statusText: modelData.connectedGame ? (modelData.connectedGame) : "Idle"
-                    isConnected: !!modelData.connectedGame
-                    connectionTime: modelData.connectionTime
-                    typeColor: modelData.typeColor
-                    flashing: modelData.flashing
-                    isRetouched: modelData.isRetouched || false
-                }
-            }
-        }
-
-        Label {
-            text: "No controllers connected."
-            visible: serverTab.clientData.controllers.length === 0
-            opacity: 0.5
-        }
-
-        Item {
             Layout.fillHeight: true
+            clip: true
+            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+
+            ColumnLayout {
+                width: clientsScroll.availableWidth
+                spacing: 6
+
+                Label {
+                    text: "Games (" + gamesModel.count + ")"
+                    font.bold: true
+                    font.pixelSize: 16
+                }
+
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: 6
+
+                    Repeater {
+                        model: gamesModel
+                        DeviceCard {
+                            expanded: serverTab.expandedCards[model.deviceId] === true
+                            onToggleExpand: serverTab.toggleCard(model.deviceId)
+                            deviceName: model.name
+                            deviceType: model.typeName
+                            appLabel: model.appLabel
+                            statusText: model.status
+                            isConnected: model.controllerCount > 0
+                            connectionTime: model.connectionTime
+                            typeColor: model.typeColor
+                            flashing: model.flashing
+                            isRetouched: model.isRetouched
+                            iconUrl: model.iconUrl
+                            slotId: model.slotId
+                            slotColor: model.slotColor
+                            currentPlayers: model.currentPlayers
+                            maxPlayers: model.maxPlayers
+                            deviceId: model.deviceId
+                            appId: model.appId
+                            addr: model.addr
+                            address: model.address
+                            reliablePort: model.reliablePort
+                            unreliablePort: model.unreliablePort
+                            domain: model.domain
+                        }
+                    }
+                }
+
+                Label {
+                    text: "No games connected."
+                    visible: gamesModel.count === 0
+                    opacity: 0.5
+                }
+
+                Label {
+                    text: "Controllers (" + controllersModel.count + ")"
+                    font.bold: true
+                    font.pixelSize: 16
+                }
+
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: 6
+
+                    Repeater {
+                        model: controllersModel
+                        DeviceCard {
+                            expanded: serverTab.expandedCards[model.deviceId] === true
+                            onToggleExpand: serverTab.toggleCard(model.deviceId)
+                            deviceName: model.name
+                            deviceType: model.typeName
+                            appLabel: model.appLabel
+                            statusText: model.connectedGame !== "" ? model.connectedGame : "Idle"
+                            isConnected: model.connectedGame !== ""
+                            connectionTime: model.connectionTime
+                            typeColor: model.typeColor
+                            flashing: model.flashing
+                            isRetouched: model.isRetouched
+                            slotId: model.slotId
+                            deviceId: model.deviceId
+                            appId: model.appId
+                            addr: model.addr
+                            address: model.address
+                            reliablePort: model.reliablePort
+                            unreliablePort: model.unreliablePort
+                            domain: model.domain
+                        }
+                    }
+                }
+
+                Label {
+                    text: "No controllers connected."
+                    visible: controllersModel.count === 0
+                    opacity: 0.5
+                }
+            }
         }
     }
 }

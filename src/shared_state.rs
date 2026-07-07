@@ -53,6 +53,9 @@ pub struct ConnectedClient {
     pub slot_id: Option<i16>,
     pub current_players: Option<i16>,
     pub max_players: Option<i16>,
+    pub announced_address: Option<String>,
+    pub reliable_port: Option<i32>,
+    pub unreliable_port: Option<i32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

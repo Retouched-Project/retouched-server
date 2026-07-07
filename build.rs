@@ -15,6 +15,7 @@ fn main() {
         "qml/SetupWizard.qml",
         "qml/components/StatusIndicator.qml",
         "qml/components/DeviceCard.qml",
+        "qml/components/CopyButton.qml",
         "qml/components/LogViewer.qml",
     ]))
     .qrc("assets/assets.qrc")

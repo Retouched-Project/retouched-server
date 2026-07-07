@@ -42,6 +42,9 @@ struct Client {
     slot_id: Option<i16>,
     current_players: Option<i16>,
     max_players: Option<i16>,
+    announced_address: Option<String>,
+    reliable_port: Option<i32>,
+    unreliable_port: Option<i32>,
 }
 
 struct ServerState {
@@ -69,6 +72,9 @@ impl ServerState {
                     slot_id: c.slot_id,
                     current_players: c.current_players,
                     max_players: c.max_players,
+                    announced_address: c.announced_address.clone(),
+                    reliable_port: c.reliable_port,
+                    unreliable_port: c.unreliable_port,
                 })
                 .collect();
             shared.set_clients(snapshot);
@@ -284,6 +290,9 @@ async fn handle_client(
                 slot_id: None,
                 current_players: None,
                 max_players: None,
+                announced_address: None,
+                reliable_port: None,
+                unreliable_port: None,
             },
         );
     }
@@ -503,6 +512,9 @@ async fn update_client_registry(
             c.slot_id = Some(info.slot_id);
             c.current_players = info.current_players;
             c.max_players = info.max_players;
+            c.announced_address = Some(info.device_address.address.clone());
+            c.reliable_port = Some(info.device_address.reliable_port);
+            c.unreliable_port = Some(info.device_address.unreliable_port);
             if let Some(d) = domain {
                 c.domain = Some(d.to_string());
             }
