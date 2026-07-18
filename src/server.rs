@@ -96,7 +96,7 @@ impl Server {
 
     pub fn with_shared(config: Config, gui_shared: Option<Arc<SharedState>>) -> Self {
         let (shutdown_tx, _) = broadcast::channel(1);
-        let server_device_id = uuid::Uuid::new_v4().to_string();
+        let server_device_id = bronze_monkey::identity::generate_device_id();
 
         let mut engine = Engine::new();
         let core = DeviceCore {
