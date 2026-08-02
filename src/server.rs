@@ -14,6 +14,7 @@ use bronze_monkey::devices::bm_address::BMAddress;
 use bronze_monkey::devices::device_core::DeviceCore;
 use bronze_monkey::engine::methods::DEVICE_CONNECT_REQUESTED;
 use bronze_monkey::engine::{DeviceRecord, Engine, Event, Outgoing, ProcessOutput};
+use bronze_monkey::framing::{Framer, frame};
 use bronze_monkey::types::device_type::DeviceType;
 
 use crate::config::Config;
@@ -311,7 +312,7 @@ async fn handle_client(
         }
     });
 
-    let mut buffer = Vec::with_capacity(4096);
+    let mut framer = Framer::with_max_len(max_packet_size);
     let mut read_buf = [0u8; 4096];
 
     loop {
@@ -320,19 +321,16 @@ async fn handle_client(
                 match n {
                     Ok(0) => { log::info!("Client {} disconnected", addr); break; }
                     Ok(n) => {
-                        buffer.extend_from_slice(&read_buf[..n]);
-                        loop {
-                            if buffer.len() < 4 { break; }
-                            let pkt_size = u32::from_le_bytes([buffer[0], buffer[1], buffer[2], buffer[3]]) as usize;
-                            if pkt_size > max_packet_size { log::error!("Packet too large from {}", addr); break; }
-                            if buffer.len() < 4 + pkt_size { break; }
-
-                            let full_packet: Vec<u8> = buffer[..4 + pkt_size].to_vec();
-                            buffer.drain(..4 + pkt_size);
-
+                        // A framing error means the stream is out of step, and
+                        // there is no way to find the next boundary again.
+                        let messages = match framer.feed(&read_buf[..n]) {
+                            Ok(messages) => messages,
+                            Err(e) => { log::error!("Framing error from {}: {}", addr, e); break; }
+                        };
+                        for message in messages {
                             let output = {
                                 let mut engine = state.engine.lock().await;
-                                engine.process_incoming(&full_packet)
+                                engine.process_incoming(&message)
                             };
                             route_output(&state, &output, client_id).await;
                         }
@@ -414,7 +412,7 @@ async fn route_output(state: &Arc<ServerState>, output: &ProcessOutput, source_c
             .iter()
             .filter_map(|o| {
                 d2c.get(&o.target_device_id)
-                    .map(|&cid| (cid, o.payload.clone()))
+                    .map(|&cid| (cid, frame(&o.payload)))
             })
             .collect()
     };
@@ -433,7 +431,7 @@ async fn route_send_outgoings(outgoings: &[Outgoing], clients: &HashMap<u64, Cli
     for o in outgoings {
         for (_, c) in clients.iter() {
             if c.device_id.as_deref() == Some(o.target_device_id.as_str()) {
-                let _ = c.tx.send(o.payload.clone()).await;
+                let _ = c.tx.send(frame(&o.payload)).await;
                 break;
             }
         }

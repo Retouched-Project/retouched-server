@@ -532,11 +532,8 @@ async fn setup_game_unreliable_channel(dc: Arc<RTCDataChannel>, session: Arc<Cli
     dc.on_message(Box::new(move |msg: DataChannelMessage| {
         let session = session.clone();
         Box::pin(async move {
-            if msg.data.len() <= 4 {
-                log::warn!(
-                    "UDP: received short datagram ({} bytes), dropping",
-                    msg.data.len()
-                );
+            if msg.data.is_empty() {
+                log::warn!("UDP: received empty datagram, dropping");
                 return;
             }
             let addr = *session.game_remote_addr.lock().await;
@@ -548,7 +545,8 @@ async fn setup_game_unreliable_channel(dc: Arc<RTCDataChannel>, session: Arc<Cli
                     return;
                 }
             };
-            let payload = &msg.data[4..];
+            // The browser now sends the message with no length in front.
+            let payload = &msg.data[..];
             let target = std::net::SocketAddr::new(addr, port);
             if let Err(e) = session.game_udp_socket.send_to(payload, target).await {
                 log::error!("Game UDP send error: {}", e);
