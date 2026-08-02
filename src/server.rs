@@ -374,7 +374,7 @@ async fn handle_client(
 async fn route_output(state: &Arc<ServerState>, output: &ProcessOutput, source_client_id: u64) {
     for ev in &output.events {
         match ev {
-            Event::PeerSeen { record } | Event::PeerConnected { record } => {
+            Event::PeerSeen { record } | Event::PeerConnected { record, .. } => {
                 bind_device(state, source_client_id, record).await;
             }
             Event::PeerRegistered { info, domain, .. } => {
