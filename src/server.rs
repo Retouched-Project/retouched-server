@@ -14,7 +14,7 @@ use bronze_monkey::devices::bm_address::BMAddress;
 use bronze_monkey::devices::device_core::DeviceCore;
 use bronze_monkey::engine::methods::DEVICE_CONNECT_REQUESTED;
 use bronze_monkey::engine::{DeviceRecord, Engine, Event, Outgoing, ProcessOutput};
-use bronze_monkey::framing::{Framer, frame};
+use bronze_monkey::link::{Framer, frame};
 use bronze_monkey::types::device_type::DeviceType;
 
 use crate::config::Config;
