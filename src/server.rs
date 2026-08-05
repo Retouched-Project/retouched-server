@@ -9,12 +9,11 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Mutex, RwLock, broadcast};
 
 use bronze_monkey::codec::externals::bm_registry_info::BMRegistryInfo;
-use bronze_monkey::codec::externals::handshake::Handshake;
 use bronze_monkey::devices::bm_address::BMAddress;
 use bronze_monkey::devices::device_core::DeviceCore;
 use bronze_monkey::engine::methods::DEVICE_CONNECT_REQUESTED;
 use bronze_monkey::engine::{DeviceRecord, Engine, Event, Outgoing, ProcessOutput};
-use bronze_monkey::link::{Framer, frame};
+use bronze_monkey::link::{Framer, HandshakeOutcome, Handshaker, LinkRole, VersionCheck, frame};
 use bronze_monkey::types::device_type::DeviceType;
 
 use crate::config::Config;
@@ -253,23 +252,11 @@ async fn handle_client(
         }
     }
 
-    let version_bytes = Handshake::default().to_bytes();
-    stream.write_all(&version_bytes).await?;
-    log::debug!("Sent handshake to {}", addr);
-
-    let mut handshake_buf = [0u8; 12];
-    match tokio::time::timeout(
-        std::time::Duration::from_secs(2),
-        stream.read_exact(&mut handshake_buf),
-    )
-    .await
-    {
-        Ok(Ok(_)) => log::debug!("Handshake from {}: {:02x?}", addr, &handshake_buf),
-        Ok(Err(e)) => {
-            log::warn!("Handshake read error from {}: {}", addr, e);
-            return Ok(());
-        }
-        Err(_) => log::debug!("No handshake reply from {} (timeout), proceeding", addr),
+    // The server speaks first: a controller waits rather than opening.
+    let mut handshaker = Handshaker::new(LinkRole::Initiator);
+    if let Some(opening) = handshaker.on_connect() {
+        stream.write_all(&frame(&opening)).await?;
+        log::debug!("Sent handshake to {}", addr);
     }
 
     let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<u8>>(256);
@@ -327,13 +314,32 @@ async fn handle_client(
                             Ok(messages) => messages,
                             Err(e) => { log::error!("Framing error from {}: {}", addr, e); break; }
                         };
+                        let mut drop_client = false;
                         for message in messages {
-                            let output = {
-                                let mut engine = state.engine.lock().await;
-                                engine.process_incoming(&message)
-                            };
-                            route_output(&state, &output, client_id).await;
+                            match handshaker.on_message(&message) {
+                                HandshakeOutcome::Passthrough => {
+                                    let output = {
+                                        let mut engine = state.engine.lock().await;
+                                        engine.process_incoming(&message)
+                                    };
+                                    route_output(&state, &output, client_id).await;
+                                }
+                                HandshakeOutcome::Received { current, minimum, check, reply } => {
+                                    log::debug!(
+                                        "Handshake from {}: current {:?} minimum {:?}",
+                                        addr, current, minimum
+                                    );
+                                    if let Some(reply) = reply {
+                                        let _ = tx.send(frame(&reply)).await;
+                                    }
+                                    if check != VersionCheck::Compatible {
+                                        log::warn!("Refusing {}: {:?}", addr, check);
+                                        drop_client = true;
+                                    }
+                                }
+                            }
                         }
+                        if drop_client { break; }
                     }
                     Err(e) => { log::error!("Read error from {}: {}", addr, e); break; }
                 }
