@@ -387,25 +387,24 @@ async fn run_headless(cli: Cli) -> Result<(), Box<dyn std::error::Error + Send +
                     loop {
                         if let Ok((mut socket, addr)) = listener.accept().await {
                             tokio::spawn(async move {
+                                use bronze_monkey::link::crossdomain;
                                 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-                                let mut peek_buf = [0u8; 1];
+                                let mut peek_buf = [0u8; crossdomain::PREFIX_LEN];
                                 if let Ok(Ok(n)) = tokio::time::timeout(
                                     std::time::Duration::from_millis(500),
                                     socket.peek(&mut peek_buf),
                                 )
                                 .await
                                 {
-                                    if n > 0 && peek_buf[0] == b'<' {
-                                        let mut discard = [0u8; 23];
+                                    if crossdomain::is_policy_request(&peek_buf[..n]) {
+                                        let mut discard = [0u8; crossdomain::REQUEST.len()];
                                         let _ = tokio::time::timeout(
                                             std::time::Duration::from_millis(200),
                                             socket.read_exact(&mut discard),
                                         )
                                         .await;
 
-                                        let policy = r#"<?xml version="1.0"?><cross-domain-policy><allow-access-from domain="*" to-ports="1008-49151" /></cross-domain-policy>"#;
-                                        let _ = socket.write_all(policy.as_bytes()).await;
-                                        let _ = socket.write_all(&[0]).await;
+                                        let _ = socket.write_all(crossdomain::RESPONSE).await;
                                         let _ = socket.flush().await;
                                         log::debug!("Served policy on 843 to {}", addr);
                                     }
@@ -511,7 +510,7 @@ async fn run_headless(cli: Cli) -> Result<(), Box<dyn std::error::Error + Send +
     };
 
     // warn off-thread if the 843 redirect is not active
-    let policy_target_port = config.server_port;
+    let policy_target_port = retouched_server::server::CONTROLLER_POLICY_PORT;
     std::thread::spawn(move || {
         setup::port_redirect::warn_if_inactive(policy_target_port);
     });

@@ -13,15 +13,14 @@ use bronze_monkey::devices::bm_address::BMAddress;
 use bronze_monkey::devices::device_core::DeviceCore;
 use bronze_monkey::engine::methods::DEVICE_CONNECT_REQUESTED;
 use bronze_monkey::engine::{DeviceRecord, Engine, Event, Outgoing, ProcessOutput};
+use bronze_monkey::link::crossdomain;
 use bronze_monkey::link::{Framer, HandshakeOutcome, Handshaker, LinkRole, VersionCheck, frame};
 use bronze_monkey::types::device_type::DeviceType;
 
 use crate::config::Config;
 use crate::shared_state::{ConnectedClient, SharedState};
 
-const CROSS_DOMAIN_POLICY: &str = r#"<?xml version="1.0"?><cross-domain-policy><allow-access-from domain="*" to-ports="1008-49151" /></cross-domain-policy>"#;
-
-const CONTROLLER_POLICY_PORT: u16 = 9010;
+pub const CONTROLLER_POLICY_PORT: u16 = 9010;
 
 // set by the redirect probe so its own loopback policy fetch is not logged
 static POLICY_PROBE_ACTIVE: AtomicBool = AtomicBool::new(false);
@@ -213,8 +212,7 @@ async fn serve_policy(mut stream: TcpStream, peer: std::net::SocketAddr) {
     let _ =
         tokio::time::timeout(std::time::Duration::from_millis(500), stream.read(&mut buf)).await;
     log::info!("Serving socket policy file to {}", peer);
-    let _ = stream.write_all(CROSS_DOMAIN_POLICY.as_bytes()).await;
-    let _ = stream.write_all(&[0]).await;
+    let _ = stream.write_all(crossdomain::RESPONSE).await;
     let _ = stream.flush().await;
 }
 
@@ -225,31 +223,19 @@ async fn handle_client(
     max_packet_size: usize,
     shutdown_rx: &mut broadcast::Receiver<()>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let mut peek_buf = [0u8; 1];
+    let mut peek_buf = [0u8; crossdomain::PREFIX_LEN];
     if let Ok(Ok(n)) = tokio::time::timeout(
         std::time::Duration::from_millis(200),
         stream.peek(&mut peek_buf),
     )
     .await
+        && crossdomain::is_policy_request(&peek_buf[..n])
     {
-        if n > 0 && peek_buf[0] == b'<' {
-            let mut req = [0u8; 23];
-            if let Ok(Ok(_)) = tokio::time::timeout(
-                std::time::Duration::from_millis(200),
-                stream.read_exact(&mut req),
-            )
-            .await
-            {
-                if req.starts_with(b"<policy-file-request") {
-                    if !(POLICY_PROBE_ACTIVE.load(Ordering::Relaxed) && addr.ip().is_loopback()) {
-                        log::info!("Serving socket policy file to {}", addr);
-                    }
-                    let _ = stream.write_all(CROSS_DOMAIN_POLICY.as_bytes()).await;
-                    let _ = stream.write_all(&[0]).await;
-                    return Ok(());
-                }
-            }
+        if !(POLICY_PROBE_ACTIVE.load(Ordering::Relaxed) && addr.ip().is_loopback()) {
+            log::info!("Serving socket policy file to {}", addr);
         }
+        let _ = stream.write_all(crossdomain::RESPONSE).await;
+        return Ok(());
     }
 
     // The server speaks first: a controller waits rather than opening.

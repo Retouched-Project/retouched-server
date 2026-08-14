@@ -8,6 +8,7 @@ use axum::{
     response::{IntoResponse, Json, Response},
     routing::{get, post},
 };
+use bronze_monkey::link::crossdomain;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -34,8 +35,12 @@ pub fn build_router(state: Arc<HttpServerState>) -> Router {
 }
 
 async fn handle_crossdomain() -> impl IntoResponse {
-    let xml = r#"<?xml version="1.0"?><cross-domain-policy><allow-access-from domain="*" to-ports="1008-49151" /></cross-domain-policy>"#;
-    (StatusCode::OK, [("content-type", "application/xml")], xml).into_response()
+    (
+        StatusCode::OK,
+        [("content-type", "application/xml")],
+        crossdomain::XML,
+    )
+        .into_response()
 }
 
 #[derive(Deserialize)]

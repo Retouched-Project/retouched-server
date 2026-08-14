@@ -259,8 +259,5 @@ impl qobject::SettingsBackend {
 }
 
 fn redirect_target_port() -> u16 {
-    crate::gui::server_backend::BACKEND_INIT
-        .get()
-        .map(|init| init.config.lock().unwrap().server_port)
-        .unwrap_or(8088)
+    crate::server::CONTROLLER_POLICY_PORT
 }
