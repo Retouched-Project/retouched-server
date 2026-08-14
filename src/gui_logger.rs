@@ -4,6 +4,7 @@
 use log::{LevelFilter, Log, Metadata, Record};
 use std::sync::Arc;
 
+use crate::logging::{DEP_MAX_LEVEL, is_own_target};
 use crate::shared_state::SharedState;
 
 pub struct GuiLogger {
@@ -16,12 +17,6 @@ impl GuiLogger {
         log::set_boxed_logger(Box::new(logger)).expect("Failed to set logger");
         log::set_max_level(level);
     }
-}
-
-pub const DEP_MAX_LEVEL: LevelFilter = LevelFilter::Warn;
-
-fn is_own_target(target: &str) -> bool {
-    target.starts_with("bronze_monkey") || target.starts_with("retouched_server")
 }
 
 impl Log for GuiLogger {

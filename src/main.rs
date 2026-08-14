@@ -18,7 +18,7 @@ use retouched_server::server::Server;
 #[cfg(feature = "gui")]
 use retouched_server::{ServerCommand, gui, gui_logger};
 use retouched_server::{
-    app_dirs, cert_gen, http_server, setup, touchy_patcher, web_manager, webrtc_bridge,
+    app_dirs, cert_gen, http_server, logging, setup, touchy_patcher, web_manager, webrtc_bridge,
 };
 
 #[derive(Parser, Debug)]
@@ -297,12 +297,12 @@ async fn run_headless(cli: Cli) -> Result<(), Box<dyn std::error::Error + Send +
 
     let effective_log_level = cli.log_level.as_deref().unwrap_or(&config.log_level);
     let log_level = parse_log_level(effective_log_level, cli.debug);
-    env_logger::Builder::new()
-        .filter_level(gui_logger::DEP_MAX_LEVEL)
-        .filter_module("bronze_monkey", log_level)
-        .filter_module("retouched_server", log_level)
-        .format_timestamp_millis()
-        .init();
+    let mut log_builder = env_logger::Builder::new();
+    log_builder.filter_level(logging::DEP_MAX_LEVEL);
+    for target in logging::OWN_TARGETS {
+        log_builder.filter_module(target, log_level);
+    }
+    log_builder.format_timestamp_millis().init();
 
     log::info!("Loaded configuration from: {}", config_path.display());
 
