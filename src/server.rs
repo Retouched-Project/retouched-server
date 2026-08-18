@@ -108,7 +108,12 @@ impl Server {
             }),
         };
         engine.init_local_device(core);
-        engine.configure_roles(true, None);
+        engine
+            .configure(bronze_monkey::config::EngineConfig {
+                server: true,
+                ..Default::default()
+            })
+            .expect("a server needs nothing a config can be missing");
 
         let state = Arc::new(ServerState {
             engine: Mutex::new(engine),
