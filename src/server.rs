@@ -12,7 +12,7 @@ use bronze_monkey::codec::externals::bm_registry_info::BMRegistryInfo;
 use bronze_monkey::devices::bm_address::BMAddress;
 use bronze_monkey::devices::device_core::DeviceCore;
 use bronze_monkey::engine::methods::DEVICE_CONNECT_REQUESTED;
-use bronze_monkey::engine::{DeviceRecord, Engine, Event, Outgoing, ProcessOutput};
+use bronze_monkey::engine::{Arrival, DeviceRecord, Engine, Event, Outgoing, ProcessOutput};
 use bronze_monkey::link::crossdomain;
 use bronze_monkey::link::{Framer, HandshakeOutcome, Handshaker, LinkRole, VersionCheck, frame};
 use bronze_monkey::types::device_type::DeviceType;
@@ -292,6 +292,11 @@ async fn handle_client(
 
     let mut framer = Framer::with_max_len(max_packet_size);
     let mut read_buf = [0u8; 4096];
+    // Every message on this socket comes from the same place.
+    let arrival = Arrival {
+        source: Some(addr.ip().to_string()),
+        ..Default::default()
+    };
 
     loop {
         tokio::select! {
@@ -311,7 +316,7 @@ async fn handle_client(
                                 HandshakeOutcome::Passthrough => {
                                     let output = {
                                         let mut engine = state.engine.lock().await;
-                                        engine.process_incoming(&message)
+                                        engine.process_incoming(&message, &arrival)
                                     };
                                     route_output(&state, &output, client_id).await;
                                 }
@@ -409,7 +414,7 @@ async fn route_output(state: &Arc<ServerState>, output: &ProcessOutput, source_c
             .iter()
             .filter_map(|o| {
                 d2c.get(&o.target_device_id)
-                    .map(|&cid| (cid, frame(&o.payload)))
+                    .map(|&cid| (cid, o.payload.clone()))
             })
             .collect()
     };
@@ -428,7 +433,7 @@ async fn route_send_outgoings(outgoings: &[Outgoing], clients: &HashMap<u64, Cli
     for o in outgoings {
         for (_, c) in clients.iter() {
             if c.device_id.as_deref() == Some(o.target_device_id.as_str()) {
-                let _ = c.tx.send(frame(&o.payload)).await;
+                let _ = c.tx.send(o.payload.clone()).await;
                 break;
             }
         }
