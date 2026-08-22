@@ -349,7 +349,7 @@ async fn handle_client(
         if let Some(client) = clients.remove(&client_id) {
             if let Some(dev_id) = &client.device_id {
                 state.device_to_client.write().await.remove(dev_id);
-                let disconnect_outgoings = state.engine.lock().await.drop_device(dev_id);
+                let disconnect_outgoings = state.engine.lock().await.peer_gone(dev_id);
                 route_send_outgoings(&disconnect_outgoings, &clients).await;
                 if let Some(ref shared) = state.gui_shared {
                     shared.metrics_connections.lock().unwrap().remove(dev_id);
