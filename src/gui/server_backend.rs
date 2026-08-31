@@ -4,6 +4,7 @@
 use crate::ServerCommand;
 use crate::config::Config;
 use crate::shared_state::{ServerStatus, SharedState};
+use bronze_monkey::types::device_type::DeviceType;
 use core::pin::Pin;
 use cxx_qt_lib::QString;
 use std::collections::HashMap;
@@ -36,8 +37,8 @@ fn device_type_name(code: Option<i32>) -> &'static str {
 }
 
 fn app_label(device_type_code: Option<i32>, domain: Option<&str>) -> &'static str {
-    let is_game = matches!(device_type_code, Some(1) | Some(3) | Some(5));
-    let is_mobile = matches!(device_type_code, Some(0) | Some(2) | Some(4));
+    let is_game = is_game(device_type_code);
+    let is_mobile = is_controller(device_type_code);
     match domain.map(|d| d.to_lowercase()).as_deref() {
         Some("nitrome") if is_game => "Nitrome",
         Some("nitrome") if is_mobile => "Touchy",
@@ -52,12 +53,16 @@ fn app_label(device_type_code: Option<i32>, domain: Option<&str>) -> &'static st
     }
 }
 
+fn device_type(code: Option<i32>) -> Option<DeviceType> {
+    code.and_then(|code| DeviceType::for_value(code).ok())
+}
+
 fn is_game(code: Option<i32>) -> bool {
-    matches!(code, Some(1) | Some(3))
+    device_type(code).is_some_and(DeviceType::is_game)
 }
 
 fn is_controller(code: Option<i32>) -> bool {
-    matches!(code, Some(0) | Some(2) | Some(4) | Some(5))
+    device_type(code).is_some_and(DeviceType::is_controller)
 }
 
 fn device_type_color(code: Option<i32>) -> &'static str {
