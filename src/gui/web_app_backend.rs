@@ -11,6 +11,8 @@ use crate::gui::server_backend::BACKEND_INIT;
 
 const WEB_APP_PORT: u16 = 8089;
 
+static BRIDGE_PORT_LOADED: AtomicBool = AtomicBool::new(false);
+
 #[derive(Clone, Copy, PartialEq)]
 enum BridgeStatus {
     Stopped,
@@ -48,7 +50,6 @@ struct WebAppInternalState {
     http_port: u16,
     webrtc_port: u16,
     server_port: u16,
-    lan_ip: String,
 }
 
 impl WebAppInternalState {
@@ -85,7 +86,6 @@ static WEB_STATE: LazyLock<Mutex<WebAppInternalState>> = LazyLock::new(|| {
         http_port: 8080,
         webrtc_port: 8443,
         server_port: 8088,
-        lan_ip: "127.0.0.1".to_string(),
     })
 });
 
@@ -96,15 +96,11 @@ fn ensure_initialized(state: &mut WebAppInternalState) {
     if let Some(init) = BACKEND_INIT.get() {
         let config = init.config.lock().unwrap();
         state.data_dir = crate::app_dirs::app_data_dir(init.data_dir.as_deref());
-        state.http_port = config.http_port;
+        state.http_port = config.http_port();
         state.webrtc_port = config.webrtc_port;
-        state.server_port = config.server_port;
+        state.server_port = config.registry_port();
         state.custom_web_dir = config.custom_web_dir.clone().unwrap_or_default();
         drop(config);
-
-        state.lan_ip = local_ip_address::local_ip()
-            .map(|ip| ip.to_string())
-            .unwrap_or_else(|_| "127.0.0.1".to_string());
 
         let effective_dir = state.effective_web_dir();
         if effective_dir.join("index.html").exists() {
@@ -162,7 +158,8 @@ fn generate_qr_file(data: &str, filename: &str, data_dir: &std::path::Path) -> O
 pub struct WebAppBackendRust {
     bridge_status: QString,
     bridge_port: QString,
-    lan_ip: QString,
+    registry_host: QString,
+    use_local_registry: bool,
     bridge_error: QString,
     web_app_status: QString,
     web_app_version: QString,
@@ -183,7 +180,8 @@ impl Default for WebAppBackendRust {
         Self {
             bridge_status: QString::from("Stopped"),
             bridge_port: QString::from("8443"),
-            lan_ip: QString::from(""),
+            registry_host: QString::from(""),
+            use_local_registry: true,
             bridge_error: QString::from(""),
             web_app_status: QString::from("Not found"),
             web_app_version: QString::from(""),
@@ -213,7 +211,8 @@ pub mod qobject {
         #[qml_element]
         #[qproperty(QString, bridge_status)]
         #[qproperty(QString, bridge_port)]
-        #[qproperty(QString, lan_ip)]
+        #[qproperty(QString, registry_host)]
+        #[qproperty(bool, use_local_registry)]
         #[qproperty(QString, bridge_error)]
         #[qproperty(QString, web_app_status)]
         #[qproperty(QString, web_app_version)]
@@ -260,7 +259,13 @@ pub mod qobject {
         fn set_bridge_port_value(self: Pin<&mut WebAppBackend>, port: QString);
 
         #[qinvokable]
-        fn set_lan_ip_value(self: Pin<&mut WebAppBackend>, ip: QString);
+        fn restore_default_bridge_port(self: Pin<&mut WebAppBackend>);
+
+        #[qinvokable]
+        fn set_registry_host_value(self: Pin<&mut WebAppBackend>, host: QString);
+
+        #[qinvokable]
+        fn set_use_local_registry_value(self: Pin<&mut WebAppBackend>, local: bool);
 
         #[qinvokable]
         fn kill_all(self: Pin<&mut WebAppBackend>);
@@ -279,6 +284,19 @@ impl qobject::WebAppBackend {
                 state.latest_version.clone(),
                 state.update_available.clone(),
             );
+        }
+
+        if let Some(init) = BACKEND_INIT.get() {
+            let cfg = init.config.lock().unwrap();
+            let local = cfg.bridge_uses_local_registry;
+            let host = cfg.bridge_registry_host.clone();
+            let port = cfg.webrtc_port.to_string();
+            drop(cfg);
+            self.as_mut().set_use_local_registry(local);
+            self.as_mut().set_registry_host(QString::from(&host));
+            if !BRIDGE_PORT_LOADED.swap(true, Ordering::Relaxed) {
+                self.as_mut().set_bridge_port(QString::from(&port));
+            }
         }
 
         let bridge_st = *state.bridge_status.lock().unwrap();
@@ -375,11 +393,26 @@ impl qobject::WebAppBackend {
         let mut state = WEB_STATE.lock().unwrap();
         ensure_initialized(&mut state);
 
-        let lan_ip = if let Some(init) = BACKEND_INIT.get() {
-            init.shared.detected_lan_ip()
-        } else {
-            return;
-        };
+        let (lan_ip, shared, retry_secs, registry_addr, registry_is_local) =
+            if let Some(init) = BACKEND_INIT.get() {
+                let cfg = init.config.lock().unwrap();
+                let (addr, is_local) = crate::webrtc_bridge::registry_address(
+                    cfg.bridge_uses_local_registry,
+                    &cfg.bridge_registry_host,
+                    cfg.registry_port(),
+                );
+                let retry = cfg.registry_retry_secs;
+                drop(cfg);
+                (
+                    init.shared.detected_lan_ip(),
+                    init.shared.clone(),
+                    retry,
+                    addr,
+                    is_local,
+                )
+            } else {
+                return;
+            };
 
         let cert_dir = state.data_dir.join("certs");
         if let Err(e) = crate::cert_gen::ensure_cert(&cert_dir, &lan_ip) {
@@ -394,7 +427,6 @@ impl qobject::WebAppBackend {
         let status = state.bridge_status.clone();
         let error = state.bridge_error.clone();
         let stop_flag = state.bridge_stop_flag.clone();
-        let server_port = state.server_port;
         let http_port = state.http_port;
 
         drop(state);
@@ -406,12 +438,19 @@ impl qobject::WebAppBackend {
                 .unwrap();
 
             rt.block_on(async {
+                let watch = if registry_is_local {
+                    crate::webrtc_bridge::RegistryWatch::Local(shared)
+                } else {
+                    crate::webrtc_bridge::RegistryWatch::Elsewhere
+                };
                 match crate::webrtc_bridge::WebRTCBridge::start(
                     bridge_port,
-                    server_port,
+                    registry_addr,
                     http_port,
                     lan_ip,
                     &cert_dir,
+                    watch,
+                    std::time::Duration::from_secs(retry_secs),
                 )
                 .await
                 {
@@ -583,12 +622,69 @@ impl qobject::WebAppBackend {
         self.set_custom_web_dir(QString::from(""));
     }
 
-    fn set_bridge_port_value(self: Pin<&mut Self>, port: QString) {
-        self.set_bridge_port(port);
+    fn set_bridge_port_value(mut self: Pin<&mut Self>, port: QString) {
+        let text = port.to_string();
+        self.as_mut().set_bridge_port(port);
+        if let Ok(value) = text.trim().parse::<u16>()
+            && value != 0
+        {
+            Self::store_bridge_port(value);
+        }
     }
 
-    fn set_lan_ip_value(self: Pin<&mut Self>, ip: QString) {
-        self.set_lan_ip(ip);
+    fn restore_default_bridge_port(mut self: Pin<&mut Self>) {
+        let port = crate::config::DEFAULT_BRIDGE_PORT;
+        self.as_mut()
+            .set_bridge_port(QString::from(&port.to_string()));
+        Self::store_bridge_port(port);
+    }
+
+    fn store_bridge_port(port: u16) {
+        let Some(init) = BACKEND_INIT.get() else {
+            return;
+        };
+        let mut cfg = init.config.lock().unwrap();
+        if cfg.webrtc_port == port {
+            return;
+        }
+        cfg.webrtc_port = port;
+        if let Err(e) = cfg.save_to_file(&init.config_path) {
+            log::warn!("Failed to save the bridge port: {}", e);
+        }
+    }
+
+    fn set_registry_host_value(mut self: Pin<&mut Self>, host: QString) {
+        self.as_mut().set_registry_host(host.clone());
+        Self::store_registry(None, Some(host.to_string()));
+    }
+
+    fn set_use_local_registry_value(mut self: Pin<&mut Self>, local: bool) {
+        self.as_mut().set_use_local_registry(local);
+        Self::store_registry(Some(local), None);
+    }
+
+    fn store_registry(local: Option<bool>, host: Option<String>) {
+        let Some(init) = BACKEND_INIT.get() else {
+            return;
+        };
+        let mut cfg = init.config.lock().unwrap();
+        let mut changed = false;
+        if let Some(local) = local
+            && cfg.bridge_uses_local_registry != local
+        {
+            cfg.bridge_uses_local_registry = local;
+            changed = true;
+        }
+        if let Some(host) = host {
+            let host = host.trim().to_string();
+            if cfg.bridge_registry_host != host {
+                cfg.bridge_registry_host = host;
+                changed = true;
+            }
+        }
+        if changed && let Err(e) = cfg.save_to_file(&init.config_path) {
+            log::warn!("Failed to save the registry setting: {}", e);
+        }
     }
 
     fn kill_all(self: Pin<&mut Self>) {

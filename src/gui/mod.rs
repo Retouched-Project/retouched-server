@@ -112,7 +112,7 @@ pub async fn run_server_task(
         data_dir: data_dir_cached,
     });
     let http_router = crate::http_server::build_router(http_state);
-    let http_addr = format!("{}:{}", config.server_host, config.http_port);
+    let http_addr = format!("{}:{}", config.server_host, config.http_port());
     let http_listener = tokio::net::TcpListener::bind(&http_addr).await?;
     log::info!("HTTP server listening on {}", http_addr);
 
@@ -156,10 +156,11 @@ pub async fn run_server_task(
     shared.set_server_status(ServerStatus::Running);
     *shared.server_started_at.lock().unwrap() = Some(std::time::Instant::now());
 
-    server.run().await?;
+    let outcome = server.run().await;
 
+    shared.request_server_stop.store(true, Ordering::Relaxed);
     let _ = http_handle.await;
 
     shared.request_server_stop.store(false, Ordering::Relaxed);
-    Ok(())
+    outcome
 }

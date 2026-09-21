@@ -74,17 +74,15 @@ impl Default for ServerStatus {
 
 pub struct SharedState {
     pub server_status: Mutex<ServerStatus>,
+    status_tx: tokio::sync::watch::Sender<ServerStatus>,
     pub server_started_at: Mutex<Option<Instant>>,
     pub connected_clients: Mutex<Vec<ConnectedClient>>,
     pub pending_connections: Mutex<HashMap<String, String>>,
     pub metrics_connections: Mutex<HashMap<String, String>>,
     pub request_server_start: AtomicBool,
     pub request_server_stop: AtomicBool,
-
     pub log_buffer: Mutex<LogBuffer>,
-
     pub detected_lan_ip: Mutex<String>,
-
     pub request_quit: AtomicBool,
 }
 
@@ -94,8 +92,11 @@ impl SharedState {
             .map(|ip| ip.to_string())
             .unwrap_or_else(|_| "127.0.0.1".to_string());
 
+        let (status_tx, _) = tokio::sync::watch::channel(ServerStatus::Stopped);
+
         Arc::new(Self {
             server_status: Mutex::new(ServerStatus::Stopped),
+            status_tx,
             server_started_at: Mutex::new(None),
             connected_clients: Mutex::new(Vec::new()),
             pending_connections: Mutex::new(HashMap::new()),
@@ -109,7 +110,23 @@ impl SharedState {
     }
 
     pub fn set_server_status(&self, status: ServerStatus) {
-        *self.server_status.lock().unwrap() = status;
+        *self.server_status.lock().unwrap() = status.clone();
+        self.status_tx.send_replace(status);
+    }
+
+    pub async fn wait_until_running(&self) -> bool {
+        let mut rx = self.status_tx.subscribe();
+        loop {
+            {
+                let current = rx.borrow_and_update();
+                if *current == ServerStatus::Running {
+                    return true;
+                }
+            }
+            if rx.changed().await.is_err() {
+                return false;
+            }
+        }
     }
 
     pub fn server_status(&self) -> ServerStatus {

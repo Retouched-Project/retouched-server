@@ -94,17 +94,59 @@ Item {
                     text: backend.bridge_port
                     enabled: backend.bridge_status === "Stopped" || backend.bridge_status === "Error"
                     implicitWidth: 80
+                    inputMethodHints: Qt.ImhDigitsOnly
+                    validator: IntValidator { bottom: 1; top: 65535 }
                     onEditingFinished: backend.set_bridge_port_value(text)
                 }
 
+                Button {
+                    text: "↺"
+                    font.pixelSize: 16
+                    implicitWidth: 34
+                    enabled: backend.bridge_port !== "8443"
+                             && (backend.bridge_status === "Stopped" || backend.bridge_status === "Error")
+                    onClicked: backend.restore_default_bridge_port()
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Restore default port"
+                }
+
+            }
+
+            RowLayout {
+                Layout.leftMargin: 8
+                spacing: 8
+
+                CheckBox {
+                    id: localRegistry
+                    text: "Bridge to the server in this app"
+                    checked: backend.use_local_registry
+                    enabled: backend.bridge_status === "Stopped" || backend.bridge_status === "Error"
+                    onToggled: backend.set_use_local_registry_value(checked)
+                }
+
                 Label {
-                    text: "LAN IP:"
+                    text: "Registry:"
+                    enabled: !localRegistry.checked
                 }
                 TextField {
-                    text: backend.lan_ip
-                    implicitWidth: 150
-                    onEditingFinished: backend.set_lan_ip_value(text)
+                    text: backend.registry_host
+                    placeholderText: "host or host:port"
+                    enabled: !localRegistry.checked
+                             && (backend.bridge_status === "Stopped" || backend.bridge_status === "Error")
+                    implicitWidth: 180
+                    onEditingFinished: backend.set_registry_host_value(text)
                 }
+            }
+
+            Label {
+                text: localRegistry.checked
+                      ? "The bridge waits for this app's server and connects the moment it starts."
+                      : "The bridge retries on a timer, since a server elsewhere announces nothing."
+                color: "#aaa"
+                font.pixelSize: 11
+                Layout.leftMargin: 8
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
             }
 
             RowLayout {

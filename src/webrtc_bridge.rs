@@ -4,6 +4,7 @@
 use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::Router;
 use axum::extract::State;
@@ -16,18 +17,44 @@ use tokio::net::{TcpListener, TcpStream, UdpSocket};
 use tokio::sync::{Mutex, Notify, broadcast};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
+use crate::shared_state::ServerStatus;
 use webrtc::api::APIBuilder;
 use webrtc::api::media_engine::MediaEngine;
 use webrtc::api::setting_engine::SettingEngine;
 use webrtc::data_channel::RTCDataChannel;
 use webrtc::data_channel::data_channel_message::DataChannelMessage;
+use webrtc::data_channel::data_channel_state::RTCDataChannelState;
 use webrtc::ice_transport::ice_server::RTCIceServer;
 use webrtc::peer_connection::configuration::RTCConfiguration;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 
+pub fn registry_address(use_local: bool, host: &str, server_port: u16) -> (String, bool) {
+    let host = host.trim();
+    if use_local || host.is_empty() {
+        return (format!("127.0.0.1:{server_port}"), true);
+    }
+    let has_port = match host.rfind(']') {
+        Some(bracket) => host[bracket..].contains(':'),
+        None => host.matches(':').count() == 1,
+    };
+    if has_port {
+        (host.to_string(), false)
+    } else {
+        (format!("{host}:{server_port}"), false)
+    }
+}
+
+#[derive(Clone)]
+pub enum RegistryWatch {
+    Local(Arc<crate::shared_state::SharedState>),
+    Elsewhere,
+}
+
 #[derive(Clone)]
 struct BridgeState {
-    registry_addr: SocketAddr,
+    registry_addr: String,
+    registry_watch: RegistryWatch,
+    registry_retry: Duration,
     http_addr: SocketAddr,
     announce_host: String,
     webrtc_api: Arc<webrtc::api::API>,
@@ -95,10 +122,12 @@ pub struct WebRTCBridge {
 impl WebRTCBridge {
     pub async fn start(
         bridge_port: u16,
-        registry_port: u16,
+        registry_addr: String,
         http_port: u16,
         announce_host: String,
         cert_dir: &Path,
+        registry_watch: RegistryWatch,
+        registry_retry: Duration,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let (shutdown_tx, _) = broadcast::channel::<()>(1);
 
@@ -127,7 +156,9 @@ impl WebRTCBridge {
         );
 
         let bridge_state = BridgeState {
-            registry_addr: SocketAddr::from(([127, 0, 0, 1], registry_port)),
+            registry_addr,
+            registry_watch,
+            registry_retry,
             http_addr: SocketAddr::from(([127, 0, 0, 1], http_port)),
             announce_host,
             webrtc_api,
@@ -284,6 +315,60 @@ async fn create_peer_connection(
     })
 }
 
+async fn reach_registry(state: &BridgeState, dc: &Arc<RTCDataChannel>) -> Option<TcpStream> {
+    let mut told_client = false;
+
+    loop {
+        if dc.ready_state() != RTCDataChannelState::Open {
+            log::info!("Client left before the registry could be reached");
+            return None;
+        }
+
+        if let RegistryWatch::Local(shared) = &state.registry_watch
+            && shared.server_status() != ServerStatus::Running
+        {
+            if !told_client {
+                tell_client_to_wait(dc).await;
+                told_client = true;
+            }
+            log::info!("Registry is not running, waiting for it to start");
+            if !shared.wait_until_running().await {
+                return None;
+            }
+            continue;
+        }
+
+        match TcpStream::connect(state.registry_addr.as_str()).await {
+            Ok(stream) => {
+                if told_client {
+                    log::info!("Registry reachable again");
+                }
+                return Some(stream);
+            }
+            Err(e) => {
+                if !told_client {
+                    tell_client_to_wait(dc).await;
+                    told_client = true;
+                }
+                log::warn!(
+                    "Registry at {} is not answering ({}), trying again in {:?}",
+                    state.registry_addr,
+                    e,
+                    state.registry_retry
+                );
+                tokio::time::sleep(state.registry_retry).await;
+            }
+        }
+    }
+}
+
+async fn tell_client_to_wait(dc: &Arc<RTCDataChannel>) {
+    let msg = serde_json::json!({ "type": "registry_unavailable" }).to_string();
+    if let Err(e) = dc.send_text(msg).await {
+        log::debug!("Could not tell the client the registry is away: {}", e);
+    }
+}
+
 async fn setup_registry_channel(
     dc: Arc<RTCDataChannel>,
     state: BridgeState,
@@ -300,35 +385,8 @@ async fn setup_registry_channel(
         Box::pin(async move {
             log::info!("Registry data channel opened");
 
-            let tcp: TcpStream = {
-                let mut last_err = None;
-                let mut stream = None;
-                for attempt in 1..=10 {
-                    match TcpStream::connect(state.registry_addr).await {
-                        Ok(s) => {
-                            if attempt > 1 {
-                                log::info!("Connected to registry TCP on attempt {}", attempt);
-                            }
-                            stream = Some(s);
-                            break;
-                        }
-                        Err(e) => {
-                            log::warn!("Registry TCP connect attempt {}/10 failed: {}", attempt, e);
-                            last_err = Some(e);
-                            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                        }
-                    }
-                }
-                match stream {
-                    Some(s) => s,
-                    None => {
-                        log::error!(
-                            "Failed to connect to registry TCP after 10 attempts: {}",
-                            last_err.unwrap()
-                        );
-                        return;
-                    }
-                }
+            let Some(tcp) = reach_registry(&state, &dc).await else {
+                return;
             };
             let (mut tcp_read, tcp_write) = tcp.into_split();
 

@@ -52,9 +52,15 @@ enum Commands {
     Serve {
         #[arg(long)]
         host: Option<String>,
-        #[arg(long)]
+        #[arg(
+            long,
+            help = "Registry port, used only when this server is not serving original apps. Those ask for 8088 and cannot be told otherwise."
+        )]
         port: Option<u16>,
-        #[arg(long)]
+        #[arg(
+            long,
+            help = "HTTP port, used only when this server is not serving original apps. Those ask for 8080 and cannot be told otherwise."
+        )]
         http_port: Option<u16>,
         #[arg(long)]
         bridge: bool,
@@ -326,10 +332,17 @@ async fn run_headless(cli: Cli) -> Result<(), Box<dyn std::error::Error + Send +
             config.server_host = h;
         }
         if let Some(p) = port {
-            config.server_port = p;
+            config.custom_registry_port = p;
         }
         if let Some(hp) = http_port {
-            config.http_port = hp;
+            config.custom_http_port = hp;
+        }
+
+        if (port.is_some() || http_port.is_some()) && !config.custom_ports_apply() {
+            eprintln!(
+                "Note: the given ports are stored but not in use, because this server is set to \
+                 serve original apps, which ask for fixed ones."
+            );
         }
 
         if !bridge && !web {
@@ -346,8 +359,8 @@ async fn run_headless(cli: Cli) -> Result<(), Box<dyn std::error::Error + Send +
     };
 
     log::info!("Retouched Server v{} (headless)", env!("CARGO_PKG_VERSION"));
-    log::info!("TCP on {}:{}", config.server_host, config.server_port);
-    log::info!("HTTP on {}:{}", config.server_host, config.http_port);
+    log::info!("TCP on {}:{}", config.server_host, config.registry_port());
+    log::info!("HTTP on {}:{}", config.server_host, config.http_port());
 
     let data_dir = cli.data_dir.as_deref();
     let data_dir_cached = retouched_server::app_dirs::app_data_dir(data_dir);
@@ -360,7 +373,7 @@ async fn run_headless(cli: Cli) -> Result<(), Box<dyn std::error::Error + Send +
         data_dir: data_dir_cached.clone(),
     });
     let http_router = http_server::build_router(http_state);
-    let http_addr = format!("{}:{}", config.server_host, config.http_port);
+    let http_addr = format!("{}:{}", config.server_host, config.http_port());
     let http_listener = tokio::net::TcpListener::bind(&http_addr).await?;
     log::info!("HTTP server listening on {}", http_addr);
     tokio::spawn({
@@ -429,12 +442,20 @@ async fn run_headless(cli: Cli) -> Result<(), Box<dyn std::error::Error + Send +
         }
         let bp = bridge_port_override.unwrap_or(config.webrtc_port);
 
+        let (registry_addr, _local) = webrtc_bridge::registry_address(
+            config.bridge_uses_local_registry,
+            &config.bridge_registry_host,
+            config.registry_port(),
+        );
+        log::info!("Bridge will reach the registry at {}", registry_addr);
         let bridge = match webrtc_bridge::WebRTCBridge::start(
             bp,
-            config.server_port,
-            config.http_port,
+            registry_addr,
+            config.http_port(),
             lan_ip,
             &cert_dir,
+            webrtc_bridge::RegistryWatch::Elsewhere,
+            std::time::Duration::from_secs(config.registry_retry_secs),
         )
         .await
         {
@@ -666,7 +687,7 @@ fn cli_redirect(action: RedirectAction, config: &Option<PathBuf>) {
     let backend = detect_backend();
     let config_path = config.clone().unwrap_or_else(default_config_path);
     let target_port = Config::from_file(&config_path)
-        .map(|c| c.server_port)
+        .map(|c| c.registry_port())
         .unwrap_or(8088);
     match action {
         RedirectAction::Status => {

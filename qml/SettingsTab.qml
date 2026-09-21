@@ -57,6 +57,108 @@ Item {
             }
 
             Label {
+                text: "Ports"
+                font.bold: true
+                font.pixelSize: 16
+                Layout.leftMargin: 8
+            }
+
+            CheckBox {
+                id: servesOriginals
+                text: "Serve original apps and games"
+                checked: backend.serves_original_apps
+                Layout.leftMargin: 8
+                onToggled: backend.set_serves_original_apps_value(checked)
+            }
+
+            Label {
+                text: "Original apps and games ask for 8088 and 8080 and cannot be told to use anything else. Changing the ports below will stop them connecting!"
+                visible: !servesOriginals.checked
+                color: "#ff5050"
+                font.pixelSize: 11
+                Layout.leftMargin: 8
+                Layout.rightMargin: 8
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+            }
+
+            RowLayout {
+                Layout.leftMargin: 8
+                spacing: 8
+                enabled: !servesOriginals.checked
+
+                Label {
+                    text: "Registry:"
+                }
+                TextField {
+                    text: backend.registry_port
+                    implicitWidth: 80
+                    inputMethodHints: Qt.ImhDigitsOnly
+                    validator: IntValidator { bottom: 1; top: 65535 }
+                    onEditingFinished: backend.set_registry_port_value(text)
+                }
+
+                Label {
+                    text: "HTTP:"
+                }
+                TextField {
+                    text: backend.http_port
+                    implicitWidth: 80
+                    inputMethodHints: Qt.ImhDigitsOnly
+                    validator: IntValidator { bottom: 1; top: 65535 }
+                    onEditingFinished: backend.set_http_port_value(text)
+                }
+
+                Button {
+                    text: "↺"
+                    font.pixelSize: 16
+                    implicitWidth: 34
+                    enabled: backend.registry_port !== "8088" || backend.http_port !== "8080"
+                    onClicked: backend.restore_default_ports()
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Restore default ports"
+                }
+            }
+
+            Label {
+                text: "Takes effect when the server is next started."
+                visible: !servesOriginals.checked
+                color: "#aaa"
+                font.pixelSize: 11
+                Layout.leftMargin: 8
+            }
+
+            Label {
+                text: "Connections"
+                font.bold: true
+                font.pixelSize: 16
+                Layout.leftMargin: 8
+            }
+
+            RowLayout {
+                Layout.leftMargin: 8
+                spacing: 8
+
+                Label {
+                    text: "Limit:"
+                }
+                TextField {
+                    text: backend.max_connections
+                    implicitWidth: 80
+                    inputMethodHints: Qt.ImhDigitsOnly
+                    validator: IntValidator { bottom: 0; top: 100000 }
+                    onEditingFinished: backend.set_max_connections_value(text)
+                }
+                Label {
+                    text: backend.max_connections === "0"
+                          ? "No limit."
+                          : "Connections beyond this are refused."
+                    color: "#aaa"
+                    font.pixelSize: 11
+                }
+            }
+
+            Label {
                 text: "Flash Player Trust"
                 font.bold: true
                 font.pixelSize: 16

@@ -8,6 +8,7 @@ use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 // cached policy redirect status: 0 unknown, 1 active, 2 inactive
 static POLICY_STATUS: AtomicU8 = AtomicU8::new(0);
 static POLICY_PROBING: AtomicBool = AtomicBool::new(false);
+static PORTS_LOADED: AtomicBool = AtomicBool::new(false);
 
 fn server_running() -> bool {
     crate::gui::server_backend::BACKEND_INIT
@@ -41,6 +42,10 @@ pub struct SettingsBackendRust {
     firewall_backend: QString,
     redirect_backend: QString,
     policy_redirect_status: QString,
+    registry_port: QString,
+    http_port: QString,
+    serves_original_apps: bool,
+    max_connections: QString,
 }
 
 impl Default for SettingsBackendRust {
@@ -53,6 +58,10 @@ impl Default for SettingsBackendRust {
             firewall_backend: QString::from(""),
             redirect_backend: QString::from(""),
             policy_redirect_status: QString::from("unknown"),
+            registry_port: QString::from("8088"),
+            http_port: QString::from("8080"),
+            serves_original_apps: true,
+            max_connections: QString::from("100"),
         }
     }
 }
@@ -74,6 +83,10 @@ pub mod qobject {
         #[qproperty(QString, firewall_backend)]
         #[qproperty(QString, redirect_backend)]
         #[qproperty(QString, policy_redirect_status)]
+        #[qproperty(QString, registry_port)]
+        #[qproperty(QString, http_port)]
+        #[qproperty(bool, serves_original_apps)]
+        #[qproperty(QString, max_connections)]
         type SettingsBackend = super::SettingsBackendRust;
 
         #[qinvokable]
@@ -111,11 +124,43 @@ pub mod qobject {
 
         #[qinvokable]
         fn remove_policy_redirect(self: &SettingsBackend);
+
+        #[qinvokable]
+        fn restore_default_ports(self: Pin<&mut SettingsBackend>);
+
+        #[qinvokable]
+        fn set_registry_port_value(self: Pin<&mut SettingsBackend>, port: QString);
+
+        #[qinvokable]
+        fn set_http_port_value(self: Pin<&mut SettingsBackend>, port: QString);
+
+        #[qinvokable]
+        fn set_serves_original_apps_value(self: Pin<&mut SettingsBackend>, serves: bool);
+
+        #[qinvokable]
+        fn set_max_connections_value(self: Pin<&mut SettingsBackend>, limit: QString);
     }
 }
 
 impl qobject::SettingsBackend {
     fn refresh(mut self: Pin<&mut Self>) {
+        if let Some(init) = crate::gui::server_backend::BACKEND_INIT.get() {
+            let cfg = init.config.lock().unwrap();
+            let serves = cfg.serves_original_apps;
+            let ports = (
+                cfg.custom_registry_port.to_string(),
+                cfg.custom_http_port.to_string(),
+                cfg.max_connections.to_string(),
+            );
+            drop(cfg);
+            self.as_mut().set_serves_original_apps(serves);
+            if !PORTS_LOADED.swap(true, Ordering::Relaxed) {
+                self.as_mut().set_registry_port(QString::from(&ports.0));
+                self.as_mut().set_http_port(QString::from(&ports.1));
+                self.as_mut().set_max_connections(QString::from(&ports.2));
+            }
+        }
+
         let trust_dirs = crate::setup::flash_trust::read_trusted_dirs();
         let trust_json: Vec<_> = trust_dirs.iter().map(|d| serde_json::json!(d)).collect();
         self.as_mut().set_trust_entries_json(QString::from(
@@ -255,6 +300,81 @@ impl qobject::SettingsBackend {
         }
         // disabling makes it inactive, force the status instead of probing again
         POLICY_STATUS.store(2, Ordering::Relaxed);
+    }
+
+    fn restore_default_ports(mut self: Pin<&mut Self>) {
+        edit_config(|cfg| {
+            cfg.restore_default_ports();
+            true
+        });
+        self.as_mut().set_registry_port(QString::from(
+            &crate::config::EXPECTED_REGISTRY_PORT.to_string(),
+        ));
+        self.as_mut().set_http_port(QString::from(
+            &crate::config::EXPECTED_HTTP_PORT.to_string(),
+        ));
+    }
+
+    fn set_registry_port_value(mut self: Pin<&mut Self>, port: QString) {
+        let text = port.to_string();
+        self.as_mut().set_registry_port(port);
+        if let Ok(value) = text.trim().parse::<u16>()
+            && value != 0
+        {
+            edit_config(|cfg| {
+                let changed = cfg.custom_registry_port != value;
+                cfg.custom_registry_port = value;
+                changed
+            });
+        }
+    }
+
+    fn set_http_port_value(mut self: Pin<&mut Self>, port: QString) {
+        let text = port.to_string();
+        self.as_mut().set_http_port(port);
+        if let Ok(value) = text.trim().parse::<u16>()
+            && value != 0
+        {
+            edit_config(|cfg| {
+                let changed = cfg.custom_http_port != value;
+                cfg.custom_http_port = value;
+                changed
+            });
+        }
+    }
+
+    fn set_max_connections_value(mut self: Pin<&mut Self>, limit: QString) {
+        let text = limit.to_string();
+        self.as_mut().set_max_connections(limit);
+        if let Ok(value) = text.trim().parse::<usize>() {
+            edit_config(|cfg| {
+                let changed = cfg.max_connections != value;
+                cfg.max_connections = value;
+                changed
+            });
+        }
+    }
+
+    fn set_serves_original_apps_value(mut self: Pin<&mut Self>, serves: bool) {
+        self.as_mut().set_serves_original_apps(serves);
+        edit_config(|cfg| {
+            let changed = cfg.serves_original_apps != serves;
+            cfg.serves_original_apps = serves;
+            changed
+        });
+    }
+}
+
+fn edit_config(apply: impl FnOnce(&mut crate::config::Config) -> bool) {
+    let Some(init) = crate::gui::server_backend::BACKEND_INIT.get() else {
+        return;
+    };
+    let mut cfg = init.config.lock().unwrap();
+    if !apply(&mut cfg) {
+        return;
+    }
+    if let Err(e) = cfg.save_to_file(&init.config_path) {
+        log::warn!("Failed to save the port settings: {}", e);
     }
 }
 

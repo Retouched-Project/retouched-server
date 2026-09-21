@@ -103,8 +103,8 @@ impl Server {
             device_type: DeviceType::Server,
             address: Some(BMAddress {
                 address: config.server_host.clone(),
-                unreliable_port: config.server_port as i32,
-                reliable_port: config.server_port as i32,
+                unreliable_port: config.registry_port() as i32,
+                reliable_port: config.registry_port() as i32,
             }),
         };
         engine.init_local_device(core);
@@ -134,7 +134,7 @@ impl Server {
         self.shutdown_tx.clone()
     }
 
-    fn spawn_controller_policy_listener(&self) {
+    fn spawn_controller_policy_listener(&self) -> tokio::task::JoinHandle<()> {
         let host = self.config.server_host.clone();
         let mut shutdown_rx = self.shutdown_tx.subscribe();
         tokio::spawn(async move {
@@ -159,17 +159,21 @@ impl Server {
                     _ = shutdown_rx.recv() => break,
                 }
             }
-        });
+        })
     }
 
     pub async fn run(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let addr = format!("{}:{}", self.config.server_host, self.config.server_port);
+        let addr = format!(
+            "{}:{}",
+            self.config.server_host,
+            self.config.registry_port()
+        );
         let listener = TcpListener::bind(&addr).await?;
         log::info!("Server listening on {}", addr);
 
         let mut shutdown_rx = self.shutdown_tx.subscribe();
 
-        self.spawn_controller_policy_listener();
+        let policy_task = self.spawn_controller_policy_listener();
 
         loop {
             tokio::select! {
@@ -177,19 +181,25 @@ impl Server {
                     match result {
                         Ok((stream, addr)) => {
                             let _ = stream.set_nodelay(true);
-                            if !(POLICY_PROBE_ACTIVE.load(Ordering::Relaxed) && addr.ip().is_loopback()) {
-                                log::info!("New connection from {}", addr);
-                            }
-                            let state = self.state.clone();
-                            let max_packet = self.config.max_packet_size;
-                            let mut shutdown_rx2 = self.shutdown_tx.subscribe();
-                            tokio::spawn(async move {
-                                if let Err(e) = handle_client(
-                                    stream, addr, state, max_packet, &mut shutdown_rx2,
-                                ).await {
-                                    log::error!("Client {} error: {}", addr, e);
+                            // Zero means no limit rather than no one
+                            let cap = self.config.max_connections;
+                            if cap > 0 && self.state.clients.read().await.len() >= cap {
+                                log::warn!("Refused {}: already holding {} connections", addr, cap);
+                            } else {
+                                if !(POLICY_PROBE_ACTIVE.load(Ordering::Relaxed) && addr.ip().is_loopback()) {
+                                    log::info!("New connection from {}", addr);
                                 }
-                            });
+                                let state = self.state.clone();
+                                let max_packet = self.config.max_packet_size;
+                                let mut shutdown_rx2 = self.shutdown_tx.subscribe();
+                                tokio::spawn(async move {
+                                    if let Err(e) = handle_client(
+                                        stream, addr, state, max_packet, &mut shutdown_rx2,
+                                    ).await {
+                                        log::error!("Client {} error: {}", addr, e);
+                                    }
+                                });
+                            }
                         }
                         Err(e) => {
                             log::error!("Accept error: {}", e);
@@ -207,6 +217,9 @@ impl Server {
         for (_, client) in clients.iter() {
             let _ = client.tx.send(Vec::new()).await;
         }
+        drop(clients);
+
+        let _ = policy_task.await;
 
         Ok(())
     }
