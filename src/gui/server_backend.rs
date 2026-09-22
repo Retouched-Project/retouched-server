@@ -78,11 +78,11 @@ fn device_type_color(code: Option<i32>) -> &'static str {
 }
 
 fn slot_color(slot_id: i16) -> &'static str {
-    const COLORS: &[&str] = &[
-        "#666666", "#FF6900", "#FED000", "#FF2C9B", "#FF0066", "#D500FF", "#969C00", "#9B96CE",
-        "#00CD97", "#009B00", "#00C9FF", "#112F68", "#8AFF00", "#D01300", "#76D061", "#7400FF",
+    const COLORS: [&str; 15] = [
+        "#FF6600", "#FFCC00", "#FF3399", "#FF0066", "#CC00FF", "#999900", "#9999CC", "#00CC99",
+        "#009900", "#00CCFF", "#003366", "#99FF00", "#CC0000", "#80CD68", "#6600FF",
     ];
-    COLORS.get(slot_id as usize).copied().unwrap_or("#666666")
+    COLORS[(slot_id.max(1) as usize - 1) % COLORS.len()]
 }
 
 fn is_retouched_domain(domain: Option<&str>) -> bool {
