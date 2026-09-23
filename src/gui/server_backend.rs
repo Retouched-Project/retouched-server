@@ -54,7 +54,7 @@ fn app_label(device_type_code: Option<i32>, domain: Option<&str>) -> &'static st
 }
 
 fn device_type(code: Option<i32>) -> Option<DeviceType> {
-    code.and_then(|code| DeviceType::for_value(code).ok())
+    code.and_then(|code| DeviceType::from_code(code).ok())
 }
 
 fn is_game(code: Option<i32>) -> bool {
